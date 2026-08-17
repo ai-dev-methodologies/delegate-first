@@ -1,0 +1,16 @@
+{
+  "_comment": "delegate-first 훅 등록 예시. 이 파일을 settings.json 또는 settings.local.json으로 복사한 뒤 command의 훅 경로를 절대경로로 바꿔 쓴다. 전역 강제를 원하면 ~/.claude/settings.json 에 같은 블록을 넣고 훅 파일을 ~/.claude/hooks/ 에 둔다.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /ABSOLUTE/PATH/TO/.claude/hooks/enforce-subagent-model.cjs"
+          }
+        ]
+      }
+    ]
+  }
+}
