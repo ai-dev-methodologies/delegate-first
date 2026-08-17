@@ -16,6 +16,12 @@
      사본이 있으면 exit 2로 차단되며, 그때 폴백은 해당 tier의 frontmatter
      `model` 값을 그대로 명시하는 것이다. `effort`·`tools`·`disallowedTools`는
      override와 무관하게 유지된다.
+     이 예외는 delegate-first 정본·설치 프로젝트의 **tier 5종**(§강제 장치
+     목록)에 한한다. 다른 프로젝트에서 **동명 에이전트가 보이더라도** 그
+     정의의 frontmatter `model` 핀을 **직접 확인하기 전에는** 예외를 적용하지
+     말고 원칙(명시)대로 한다 — 이 규칙은 전 프로젝트 세션에 주입되지만
+     훅은 이름만 보고 값은 검증하지 않으므로, 이름이 같다는 사실만으로는
+     그 프로젝트의 동명 에이전트가 model이 고정돼 있다는 보장이 없다.
 3. 라우팅 기준 (글로벌 CLAUDE.md OMO 정책과 동일):
    - 탐색·파일검색·단순집계·기계적 편집 → `haiku`/`sonnet`
    - 일반 구현·보통 디버깅·리뷰 1차·문서 구조화 → `sonnet`
@@ -26,10 +32,13 @@
 
 ## 강제 장치
 - PreToolUse 훅 `~/.claude/hooks/enforce-subagent-model.cjs` (matcher: Agent)가
-  `model` 미지정 호출을 차단한다 (자체 model 고정 에이전트 타입은 예외 목록 —
-  delegate-first tier 5종: explorer-low·executor-med·executor-high·
-  reviewer-high·judge-max. 목록이 `.claude/agents/`와 갈라지지 않게 정본 레포의
-  `scripts/lint-delegate-first.py`가 대조 검사한다).
+  `model` 미지정 호출을 차단한다 (자체 model 고정 에이전트 타입은 예외 목록이며,
+  거기에 delegate-first tier 5종: explorer-low·executor-med·executor-high·
+  reviewer-high·judge-max가 **포함된다** — 목록에는 이 외에도 `oh-my-claudecode:*`
+  계열 7종 + `statusline-setup`이 있다. 목록이 `.claude/agents/`와 갈라지지
+  않게 **정본 레포 사본에 한해** `scripts/lint-delegate-first.py`가 대조
+  검사한다 — 전파된 전역 훅 사본과 각 설치 프로젝트 `agents/` 사이의
+  드리프트를 잡는 자동 검사는 없다).
 - break-glass는 사람 전용: `ALLOW_INHERITED_SUBAGENT_MODEL=1`.
   Claude는 이 변수를 스스로 설정하지 않는다.
 
