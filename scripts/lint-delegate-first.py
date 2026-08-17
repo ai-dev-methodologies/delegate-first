@@ -375,9 +375,24 @@ def is_valid_date(value: str) -> bool:
         return False
 
 
+def is_header_row(line: str) -> bool:
+    """행이 위임 로그 헤더인지 판정한다.
+
+    F1: 이전엔 행 전체에 부분문자열 "날짜"가 있으면 헤더로 오인했다 — 정상
+    7컬럼 데이터 행의 role 셀에 "날짜"라는 부분문자열이 들어가면(예: role이
+    "날짜 검증 로직 추가") 그 행을 새 표 헤더로 잘못 판정해 허위 FAIL을
+    냈다. 이제는 행을 컬럼으로 분할했을 때 전체가 기대 헤더 시퀀스
+    (LOG_HEADER)와 정확히 일치할 때만 헤더로 판정한다 — LOG_HEADER[0]이
+    "날짜"이므로 첫 셀이 정확히 "날짜"인 조건도 이 비교에 포함된다.
+    """
+    if not line.strip().startswith("|"):
+        return False
+    return split_row(line) == LOG_HEADER
+
+
 def find_next_header(lines: list, start_idx: int) -> Optional[int]:
     for i in range(start_idx, len(lines)):
-        if lines[i].strip().startswith("|") and "날짜" in lines[i]:
+        if is_header_row(lines[i]):
             return i
     return None
 
@@ -425,7 +440,7 @@ def parse_table_at(lines: list, header_idx: int, log_path: Path, findings: list)
             i += 1
             continue
         if stripped.startswith("|"):
-            if "날짜" in stripped:
+            if is_header_row(raw_line):
                 break  # 새 표 헤더 — 이 표는 여기서 닫고 호출자에게 넘긴다.
             if not stripped.endswith("|"):
                 findings.append(Finding(

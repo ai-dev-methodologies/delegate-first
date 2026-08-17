@@ -116,6 +116,8 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 **리스크**: 플러그인화하면 `subagent_type`이 `delegate-first:executor-high` 형태로 바뀌어 현행 훅 pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`, 비수식 일반명만 등록)에서 **차단된다**(실측 확인). 따라서 B-04는 훅 pinned 목록 네임스페이스 갱신 PR을 반드시 동반해야 하며, 안 하면 B-06이 새 이름(`delegate-first:*`)으로 재발한다.
 
+플러그인화로 tier 이름이 `delegate-first:*`가 되면 **린터 Check A(B-07)의 커버리지도 조용히 사라진다** — 린터는 `:`가 든 네임스페이스 항목을 "이 레포 밖 정의"로 보고 **무출력 면제**하기 때문이다(`scripts/lint-delegate-first.py`의 `if ":" in name: continue`, 실측 확인). 즉 B-04는 훅 pinned 목록 갱신 + 린터의 네임스페이스 처리 갱신을 **함께** 해야 한다.
+
 ---
 
 ## B-05 — fable 강제 트리거 5종: 실전 검증 기록 (정보, 변경 없음)
@@ -135,3 +137,15 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 **보상 통제**: README "훅 공급망 고지"의 사람-diff 서약 — `.claude/hooks/*.cjs`를 건드리는 모든 PR은 사람이 직접 diff를 읽으므로, 이런 형태로의 변형 자체가 리뷰 단계에서 걸릴 가능성이 높다. 즉 이 구멍은 기계 게이트 단독으로는 안 잡히고 사람 리뷰에 의존한다.
 
 **할 일(미착수)**: 파서를 문자열 연결까지 인식하도록 넓힐지, 아니면 "Set 항목은 리터럴 문자열만 허용"을 훅 파일 자체의 컨벤션(주석 명시)으로 못박고 파서 확장은 보류할지 결정 필요.
+
+---
+
+## B-10 — pre-commit을 `--strict`로 승격할지 결정
+
+**상태**: 미착수 (결정 대기) · **우선순위**: 5
+
+PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따라서 pre-commit을 `--strict`로 올리면 (a) B-09의 실질 표면(Set 문자열 연결 미탐 시 부수 WARN 3건이 뜨므로 strict면 걸린다) (b) stale-pinned 드리프트 WARN이 기계 게이트에 걸린다.
+
+대가: 작업 중 `(리뷰 대기)` 행이 3건 넘게 쌓이면 커밋이 막힌다(현재 WARN 조건).
+
+소유자 결정 사항이며, 결정 전까지 기본 모드 유지.

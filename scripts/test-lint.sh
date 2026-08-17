@@ -268,6 +268,15 @@ with open(p, 'a', encoding='utf-8') as f:
 "
 run_and_check "정상 행 추가 (PASS 기대)" 0
 
+# N4. role 셀에 "날짜" 부분문자열 포함된 정상 행 (F1 회귀 — 헤더 오인 방지)
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+with open(p, 'a', encoding='utf-8') as f:
+    f.write('| 2026-08-19 | executor-high | 날짜 검증 로직 추가 | sonnet | high(frontmatter) | Agent(tier) | pass |\n')
+"
+run_and_check "role 셀에 '날짜' 부분문자열 포함 (PASS 기대, F1)" 0
+
 # ===========================================================================
 # 결과 집계
 # ===========================================================================
