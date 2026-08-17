@@ -375,9 +375,24 @@ def is_valid_date(value: str) -> bool:
         return False
 
 
+def is_header_row(line: str) -> bool:
+    """행이 위임 로그 헤더인지 판정한다.
+
+    F1: 이전엔 행 전체에 부분문자열 "날짜"가 있으면 헤더로 오인했다 — 정상
+    7컬럼 데이터 행의 role 셀에 "날짜"라는 부분문자열이 들어가면(예: role이
+    "날짜 검증 로직 추가") 그 행을 새 표 헤더로 잘못 판정해 허위 FAIL을
+    냈다. 이제는 행을 컬럼으로 분할했을 때 전체가 기대 헤더 시퀀스
+    (LOG_HEADER)와 정확히 일치할 때만 헤더로 판정한다 — LOG_HEADER[0]이
+    "날짜"이므로 첫 셀이 정확히 "날짜"인 조건도 이 비교에 포함된다.
+    """
+    if not line.strip().startswith("|"):
+        return False
+    return split_row(line) == LOG_HEADER
+
+
 def find_next_header(lines: list, start_idx: int) -> Optional[int]:
     for i in range(start_idx, len(lines)):
-        if lines[i].strip().startswith("|") and "날짜" in lines[i]:
+        if is_header_row(lines[i]):
             return i
     return None
 
@@ -394,13 +409,15 @@ def parse_table_at(lines: list, header_idx: int, log_path: Path, findings: list)
     앞/뒤 파이프가 빠진 줄은 FAIL로 보고한다.
 
     Returns (다음 스캔 시작 인덱스, 이 표의 데이터 행 목록).
-    """
-    header_cells = split_row(lines[header_idx])
-    if header_cells != LOG_HEADER:
-        findings.append(Finding(
-            "FAIL", log_path, header_idx + 1,
-            f"헤더가 {LOG_HEADER}가 아님 (실제: {header_cells})"))
 
+    P-2: header_idx는 항상 find_next_header()가 반환한 인덱스이고,
+    find_next_header는 is_header_row()(=split_row(line) == LOG_HEADER)가 참인
+    줄만 반환한다. 즉 이 함수가 호출되는 시점엔 header_cells == LOG_HEADER가
+    이미 보장돼 있어 "헤더가 LOG_HEADER가 아님" 분기는 영원히 거짓이다(실측:
+    20개 회귀/음성 변형에서 0회 발생). 죽은 분기이므로 제거했다 — 헤더 자체가
+    깨진 경우는 이제 P-1의 "미소속 표 잔여 검사"가 잡는다(is_header_row가
+    거짓이면 애초에 표로 인식되지 않아 find_next_header를 통과하지 못하므로).
+    """
     n = len(lines)
     sep_idx = header_idx + 1
     sep_ok = (
@@ -425,7 +442,7 @@ def parse_table_at(lines: list, header_idx: int, log_path: Path, findings: list)
             i += 1
             continue
         if stripped.startswith("|"):
-            if "날짜" in stripped:
+            if is_header_row(raw_line):
                 break  # 새 표 헤더 — 이 표는 여기서 닫고 호출자에게 넘긴다.
             if not stripped.endswith("|"):
                 findings.append(Finding(
@@ -468,14 +485,22 @@ def check_b(log_path: Path) -> list:
         return findings
 
     lines = content.splitlines()
+    expected_header_str = "| " + " | ".join(LOG_HEADER) + " |"
 
+    # C-1: 판정 기준(정확한 7컬럼 헤더 전체 일치)과 메시지를 맞춘다. 예전
+    # 메시지("'날짜' 포함하는 | 행")는 부분문자열 판정 시절의 잔재라, 컬럼이
+    # 깨졌지만 "날짜"라는 글자는 분명히 들어있는 헤더(예: `| 날짜 | agnet | ... |`)
+    # 를 보고도 "찾지 못함"이라 말해 사용자를 오도했다.
     first_header = find_next_header(lines, 0)
     if first_header is None:
-        findings.append(Finding("FAIL", log_path, None,
-                                 "마크다운 표 헤더('날짜' 포함하는 | 행)를 찾지 못함 — Check B 중단"))
+        findings.append(Finding(
+            "FAIL", log_path, None,
+            f"유효한 마크다운 표 헤더를 찾지 못함 — 정확히 다음 7컬럼과 일치해야 함: "
+            f"{expected_header_str} (헤더 오타·컬럼 누락이 흔한 원인) — Check B 중단"))
         return findings
 
     all_data_rows: list = []
+    consumed_ranges: list = []
     scan_idx = first_header
     while True:
         header_idx = find_next_header(lines, scan_idx)
@@ -483,9 +508,34 @@ def check_b(log_path: Path) -> list:
             break
         next_idx, data_rows = parse_table_at(lines, header_idx, log_path, findings)
         all_data_rows.extend(data_rows)
+        consumed_ranges.append((header_idx, next_idx))
         # 무한루프 방지: parse_table_at은 항상 header_idx보다 뒤로 진행해야
         # 한다(헤더 자체는 최소 1줄 소비).
         scan_idx = max(next_idx, header_idx + 1)
+
+    # P-1: 어느 표에도 소속되지 않은 "비어있지 않은 | 시작 줄" 잔여 검사.
+    # F1(헤더 판정을 부분문자열 "날짜" 포함 → is_header_row 전체 7컬럼 일치로
+    # 좁힌 수정)이 만든 미탐을 봉합한다 — 헤더가 깨진 표는 이제 "잘못된
+    # 헤더"가 아니라 "헤더 아님"으로 분류되므로 find_next_header가 그 줄을
+    # 그냥 지나치고, 그 앞 표는 이미 파싱이 끝난(또는 애초에 시작되지 않은)
+    # 뒤라 깨진 표 전체가 어느 스캔에도 걸리지 않은 채 조용히 넘어갈 수
+    # 있었다(실측: 5종 회귀 케이스 전부 수정 전엔 exit 0). 각 표가 실제로
+    # 소비한 줄 범위(헤더·구분선·데이터 행 전부 포함)를 기록해두고, 그 범위
+    # 밖에서 여전히 표처럼 보이는(파이프로 시작하는 비어있지 않은) 줄이
+    # 남아 있으면 FAIL로 표면화한다.
+    consumed = set()
+    for start, end in consumed_ranges:
+        consumed.update(range(start, end))
+    for i, line in enumerate(lines):
+        if i in consumed:
+            continue
+        stripped = line.strip()
+        if stripped and stripped.startswith("|"):
+            findings.append(Finding(
+                "FAIL", log_path, i + 1,
+                f"표처럼 보이는 줄이 어느 유효한 헤더에도 소속된 표 안에 있지 않음 — "
+                f"기대 헤더: {expected_header_str} (헤더 오타나 컬럼 누락으로 이 표 "
+                f"전체가 스캔에서 누락됐을 수 있음): {stripped!r}"))
 
     if not all_data_rows:
         findings.append(Finding("WARN", log_path, None, "데이터 행이 0건 — 빈 로그"))

@@ -57,8 +57,12 @@ const MODEL_PINNED_TYPES = new Set([
   // inherit로 바꾸는 변경은 **이 목록에서 해당 항목 제거를 반드시
   // 동반**해야 한다(잔존 시 상속 통과 구멍). `.claude/agents/*.md`는
   // README "훅 공급망 고지"의 사람-diff-리뷰 서약 대상이 **아니고**,
-  // 이 레포에는 이 드리프트(목록 ↔ agents/ 실제 내용)를 기계적으로
-  // 잡는 CI·테스트가 현재 없다(B-07 참고).
+  // 이 드리프트(목록 ↔ agents/ 실제 내용)는 `scripts/lint-delegate-first.py`
+  // Check A가 검출한다(B-07). 다만 이 린터는 옵트인 pre-commit
+  // (`.githooks/pre-commit`) 또는 수동 실행에 의존하며 CI 게이트는 아직
+  // 없다 — 그리고 이 훅이 설치 프로젝트로 전파될 때 린터가 함께 가지
+  // 않으면 그 프로젝트에는 이 드리프트를 잡는 검사가 전혀 없는 상태가
+  // 된다.
   //
   // 이 훅이 전역(~/.claude/settings.json)에 등록되면 아래 pinned 이름은
   // **머신 전역 예약어**가 된다 — 다른 프로젝트가 model 없는 동명

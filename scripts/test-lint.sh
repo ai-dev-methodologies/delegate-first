@@ -242,6 +242,46 @@ open(p, 'w', encoding='utf-8').write(t)
 "
 run_and_check "name이 파일 stem과 불일치" 1
 
+# 17. P-1 회귀 케이스 1: 1차 표 헤더 오타 + 그 표에 깨진 행(컬럼 부족) + 정상 2차 표.
+# F1(헤더 판정을 부분문자열 → 전체 7컬럼 일치로 좁힌 수정)이 만든 미탐 —
+# 1차 표 헤더가 깨지면 find_next_header가 파일 처음부터 스캔하다 그 표
+# 전체(깨진 헤더+구분선+깨진 행)를 지나쳐 2차 표의 정상 헤더에서야 멈췄고,
+# 1차 표는 어느 스캔에도 걸리지 않은 채 exit 0이 될 수 있었다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+content = '''| 날짜 | agnet | role | model | effort | 실행경로 | 결과 |
+|---|---|---|---|---|---|---|
+| 2026-08-19 | executor-high | 컬럼 부족 | sonnet |
+두 번째 표는 아래 참고.
+| 날짜 | agent | role | model | effort | 실행경로 | 결과 |
+|---|---|---|---|---|---|---|
+| 2026-08-19 | executor-high | 정상 행 | sonnet | high(frontmatter) | Agent(tier) | pass |
+'''
+open(p, 'w', encoding='utf-8').write(content)
+"
+run_and_check "P-1 회귀1: 1차 표 헤더 오타+깨진 행+정상 2차 표 (FAIL 기대)" 1
+
+# 18. P-1 회귀 케이스 2: 2차 표 헤더 오타 + 잘못된 실행경로 행.
+# 1차 표는 정상적으로 닫히고(텍스트 구분선), 2차 표는 헤더가 깨져 있어
+# find_next_header가 2차 표를 아예 지나쳐 버리고(더 이상 헤더가 없으므로
+# 스캔 종료), 2차 표의 '실행경로' 위반이 검출되지 않은 채 exit 0이 될 수
+# 있었다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+content = '''| 날짜 | agent | role | model | effort | 실행경로 | 결과 |
+|---|---|---|---|---|---|---|
+| 2026-08-19 | executor-high | 정상 행 | sonnet | high(frontmatter) | Agent(tier) | pass |
+두 번째 표는 아래 참고.
+| 날짜 | agnet | role | model | effort | 실행경로 | 결과 |
+|---|---|---|---|---|---|---|
+| 2026-08-19 | executor-high | 잘못된 실행경로 | sonnet | high(frontmatter) | wrong-path | pass |
+'''
+open(p, 'w', encoding='utf-8').write(content)
+"
+run_and_check "P-1 회귀2: 2차 표 헤더 오타+잘못된 실행경로 행 (FAIL 기대)" 1
+
 # ===========================================================================
 # 음성 케이스 (PASS를 기대 — 종료코드 0)
 # ===========================================================================
@@ -267,6 +307,15 @@ with open(p, 'a', encoding='utf-8') as f:
     f.write('| 2026-08-19 | executor-med | 정상 행 추가 회귀 확인 | sonnet | medium(frontmatter) | Agent(tier) | pass |\n')
 "
 run_and_check "정상 행 추가 (PASS 기대)" 0
+
+# N4. role 셀에 "날짜" 부분문자열 포함된 정상 행 (F1 회귀 — 헤더 오인 방지)
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+with open(p, 'a', encoding='utf-8') as f:
+    f.write('| 2026-08-19 | executor-high | 날짜 검증 로직 추가 | sonnet | high(frontmatter) | Agent(tier) | pass |\n')
+"
+run_and_check "role 셀에 '날짜' 부분문자열 포함 (PASS 기대, F1)" 0
 
 # ===========================================================================
 # 결과 집계
