@@ -40,11 +40,13 @@ SKILL.md (원칙 + 5단계 체크리스트)
 │   ├── agents/{explorer-low,executor-med,executor-high,reviewer-high,judge-max}.md
 │   ├── hooks/enforce-subagent-model.cjs
 │   ├── rules/subagent-model-routing.md
+│   ├── settings.json                  (이 레포용 활성 훅 등록 — dogfood)
 │   └── settings.json.example          (훅 등록 예시 — 복사해서 쓰는 템플릿)
 ├── docs/
 │   ├── REINSTALL.md                   (정본 → 프로젝트 로컬 재설치 절차)
 │   ├── HANDOFF-2026-08-17.md          (최초 이관 패키지 원본)
 │   └── handoff/delegation-log.md      (위임 로그 — 스킬 3단계가 요구)
+├── .gitignore
 ├── BACKLOG.md
 └── README.md
 ```
@@ -63,7 +65,10 @@ cp -R "$SRC/.claude/skills/delegate-first" "$DST/.claude/skills/"
 cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,reviewer-high,judge-max}.md "$DST/.claude/agents/"
 cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$DST/.claude/hooks/"
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
+cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
 ```
+
+`subagent-model-routing.md` 복사는 **선택 사항**이다 — `.claude/rules/`는 자동 로드 경로가 아니므로, 이 규칙에 효력을 주려면 설치 프로젝트의 `CLAUDE.md`에서 명시적으로 참조해야 한다(참조하지 않으면 파일만 있고 로드되지 않는다).
 
 훅은 파일을 두는 것만으로는 작동하지 않는다 — `settings.json`(또는 커밋하지 않을 `settings.local.json`)의 `PreToolUse`에 `matcher: "Agent"`로 **등록해야** 강제된다. `.claude/settings.json.example`을 복사해서 쓴다:
 
@@ -86,6 +91,12 @@ cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
 
 break-glass는 **사람 전용**이다: `ALLOW_INHERITED_SUBAGENT_MODEL=1`. 에이전트가 이 변수를 스스로 설정하지 않는다.
 
+이 레포 자체는 이미 활성 `.claude/settings.json`(위 블록과 **같은 구조** — command가 `node <훅 절대경로>/...`가 아니라 `node "${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs"`라는 점이 다르다)을 포함하고 있다 — 정본 레포가 자기 규율을 dogfood하는 배선이다. `${CLAUDE_PROJECT_DIR}`는 Claude Code가 훅 command 안에서 프로젝트 루트 절대경로로 확장해주는 변수라 경로를 하드코딩하지 않고도 이식 가능하다 — 어느 프로젝트로 복사하든 그대로 동작한다. 큰따옴표로 감싸는 것이 권장된다.
+
+**trust 동작 주의**: 대화형 세션은 workspace trust 다이얼로그를 수락하기 전까지 settings 파일의 훅을 보류한다. 그래서 "Agent 호출이 차단되지 않는다"가 항상 "훅 미등록"을 뜻하지는 않는다 — trust를 아직 수락하지 않은 상태일 수도 있다. 반대로 `-p`/SDK(헤드리스) 세션은 폴더를 신뢰된 것으로 취급해 커밋된 `.claude/settings.json`의 훅이 그대로 실행된다. 레포에 훅을 커밋해 배포할 때는 이 비대칭(대화형=trust 게이트, 헤드리스=즉시 활성)을 인지하고 있어야 한다.
+
+**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.)
+
 ### B) 플러그인화
 
 skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 묶어 여러 레포에서 재사용하는 경로. **현재 미구현** — [BACKLOG.md](BACKLOG.md) 항목으로 등재돼 있다. 여러 레포에 설치할 계획이면 A) 대신 이쪽을 먼저 만드는 것이 낫다.
@@ -102,8 +113,10 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 ## 검증 3단계 (설치 후 반드시 실행)
 
 1. **스킬 로드 확인** — 설치한 프로젝트 세션에서 `/delegate-first`를 호출해 `SKILL.md` 본문이 그대로 로드되는지 확인한다.
-2. **훅 차단 스모크** — `model` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. (차단되지 않으면 훅이 `settings.json`에 등록되지 않은 것이다.)
-3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다.
+2. **훅 차단 스모크** — `model` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. (차단되지 않으면 훅이 `settings.json`에 등록되지 않은 것이다 — 단, 역은 성립하지 않는다: 차단됐다고 해서 **이 프로젝트**에 등록됐다는 뜻은 아니다. `~/.claude/settings.json`에 같은 훅이 **전역**으로 이미 등록돼 있으면, 이 프로젝트의 `.claude/settings.json`을 지워도 스모크는 그대로 통과한다(2026-08-18 실측 — 전역 등록만으로 차단됨). 전역 등록과 프로젝트 등록을 구분하려면 (a) 스모크 전에 전역 등록을 일시 비활성화하거나 (b) 프로젝트 훅 command를 래퍼로 감싸 stderr에 출처를 직접 찍는다 — 예: `{ "type": "command", "command": "sh -c 'echo \"[hook-src=project]\" >&2; exec node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs\"'" }`. (이전에 검토했던 `--src=project` 같은 인자 부착 방식은 훅 스크립트가 인자를 무시해 stderr가 두 경로에서 동일하게 나오므로 출처 판별이 **성립하지 않는다** — 실제로 검증 가능한 것은 래퍼 방식뿐이다. 래퍼가 `exec` 직전에 자기 출처를 stderr에 찍으므로 훅 스크립트 자체를 고치지 않고도 확실히 동작한다.))
+3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — 단 현재는 B-06 제약으로 차단된다(아래 「알려진 제약」 먼저 읽을 것).
+
+**알려진 제약**: 현재 훅의 `MODEL_PINNED_TYPES`에는 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 등록돼 있지 않다. 그래서 tier 에이전트를 `model` 파라미터 없이 호출하면(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) exit 2로 차단된다. 지금은 tier 호출에도 `model`을 넘겨야 통과하는데, 그러면 호출 파라미터가 frontmatter의 `model`을 덮어쓴다(`effort`·`tools`·`disallowedTools`는 유지). 즉 `references/routing-matrix.md` §①의 "tier 에이전트는 model 없이 호출해도 예외로 통과한다"는 서술은 이 상태에서는 성립하지 않는다 — 해소 항목은 [BACKLOG.md](BACKLOG.md) **B-06**.
 
 ## 원칙 요약
 

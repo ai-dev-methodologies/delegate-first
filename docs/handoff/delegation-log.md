@@ -12,4 +12,11 @@
 
 | 날짜 | agent | role | model | effort | 실행경로 | 결과 |
 |---|---|---|---|---|---|---|
-| | | | | | | |
+| 2026-08-18 | explorer-low | 훅 차단 프로브(의도적 model 미지정) | (미지정) | (default) | Agent(tier) | blocked-as-designed |
+| 2026-08-18 | explorer-low | 정본 레포 잔존참조·링크 무결성 전수 조사 | haiku | low(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | claude-code-guide | CLAUDE_PROJECT_DIR·trust·frontmatter 키·model 우선순위 공식문서 확정 | sonnet | (default) | Agent(ad-hoc) | pass |
+| 2026-08-18 | executor-med | settings.json 배선 + README·BACKLOG·로그 편집 | sonnet | medium(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | reviewer-high | PR#1 독립 리뷰(원문 보존·문서 정합성·훅 배선 적대 검증) | opus | high(frontmatter) | Agent(tier) | pass (Cancer 0, Polyp 8, Cigarette 5) |
+| 2026-08-18 | executor-high | 리뷰 finding P1~P8·C1~C5 봉합 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | judge-max | PR#1 릴리스 게이트 최종 판정(적대 검증) | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Cancer 0, 신규 finding 8) |
+| 2026-08-18 | executor-high | 릴리스 게이트 finding NF-1~NF-8 봉합 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |

@@ -1,5 +1,5 @@
 {
-  "_comment": "delegate-first 훅 등록 예시. 이 파일을 settings.json 또는 settings.local.json으로 복사한 뒤 command의 훅 경로를 절대경로로 바꿔 쓴다. 전역 강제를 원하면 ~/.claude/settings.json 에 같은 블록을 넣고 훅 파일을 ~/.claude/hooks/ 에 둔다.",
+  "_comment": "이 레포 자체는 ${CLAUDE_PROJECT_DIR}를 쓰는 활성 .claude/settings.json을 이미 포함한다(정본 레포가 자기 규율을 dogfood). 이 .example은 설치 대상 프로젝트용 템플릿이다 — 훅 파일을 프로젝트 로컬(<프로젝트>/.claude/hooks/)에 두면 ${CLAUDE_PROJECT_DIR} 형태를, 사용자 홈(~/.claude/hooks/)에 두고 전역 강제하려면 절대경로 형태를 쓴다. 커밋하지 않을 로컬 설정은 settings.local.json에 둔다(gitignore 처리돼 있음).",
   "hooks": {
     "PreToolUse": [
       {
