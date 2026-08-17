@@ -23,4 +23,5 @@
 | 2026-08-18 | executor-high | B-06 해소(훅 pinned 목록 + routing-matrix 전제 + 문서 갱신) | sonnet | high(frontmatter) | Agent(tier) | pass |
 | 2026-08-18 | reviewer-high | PR#2 훅 변경 독립 리뷰(강제력·스푸핑·정합성) | opus | high(frontmatter) | Agent(tier) | pass (Cancer 0, Polyp 3, Cigarette 3) |
 | 2026-08-18 | judge-max | PR#2 릴리스 게이트(권한·강제장치 표면 적대 판정) | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Cancer 0, NF-A 필수) |
-| 2026-08-18 | executor-high | PR#2 게이트 finding 합집합 봉합 + 스모크 스크립트 신설 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | PR#2 게이트 finding 합집합 봉합 + 스모크 스크립트 신설 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | executor-high | B-01·B-03 SKILL.md 규율 보강 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |

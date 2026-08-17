@@ -9,7 +9,9 @@
 
 ## B-01 (최상단) — SKILL.md 2단계(Route)에 effort 우선 경로 지침 부재
 
-**상태**: 미착수 · **우선순위**: 1 (다른 항목보다 먼저)
+**상태**: 해결 (2026-08-18, PR #3) · **우선순위**: 1 (다른 항목보다 먼저)
+
+**해소 내용**: 사실 서술(effort 지정 불가)은 이미 있었으므로 추가하지 않았다 — Step 2(Route) 본문에 "경로 선택 시점"의 행동 지침 2문장을 추가(effort가 중요하면 tier 에이전트/Workflow `agent()`/`codex exec`를 우선 선택하라, tier 에이전트 호출 시 `model` 생략을 권장). Flow checklist 2번 줄에도 같은 취지를 짧게 보강했다.
 
 Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은 `effort`를 지정할 수 없다. effort를 통제하려면 ① tier 에이전트를 `subagent_type`으로 직접 지정 ② Workflow `agent()` ③ `codex exec` 중 하나를 써야 한다.
 
@@ -66,7 +68,9 @@ pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`)이 `.claude/
 
 ## B-03 — 판정 에이전트 idle 회수 관행 (SendMessage 재요구)
 
-**상태**: 미착수 · **우선순위**: 3
+**상태**: 해결 (2026-08-18, PR #3) · **우선순위**: 3
+
+**해소 내용**: `SKILL.md`에 `## Escalation ladder` 뒤 `## Idle recovery` 절을 신설 — 타임박스를 위임 시점에 정하고, 무응답 시 `SendMessage` 재요구 → 그래도 무응답이면 재위임(프롬프트 강화) 순서를 명시. 타임박스 기준값은 하드코딩하지 않고 "위임 시점에 정한다 + 판정급은 짧은 조회보다 길게"로만 규정했다.
 
 2026-08-17 실전에서 판정 에이전트(`reviewer-high`, `judge-max` 등)가 **보고 없이 idle 상태로 남는 패턴이 잦았다**. 메인이 통지를 기다리기만 하면 라운드가 멈춘다 — `SendMessage`로 판정문을 재요구하는 관행이 필요하다는 것이 확인됐다.
 

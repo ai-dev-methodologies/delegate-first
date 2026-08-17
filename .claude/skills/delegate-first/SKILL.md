@@ -33,7 +33,7 @@ Copy this into your response and check off as you go:
 ```
 Delegation Progress:
 - [ ] 1. Decompose the task and classify its type
-- [ ] 2. Pick model + effort + execution path (routing-matrix.md)
+- [ ] 2. Pick model + effort + execution path (routing-matrix.md) — if effort matters, prefer a tier agent or Workflow/codex path
 - [ ] 3. Delegate with a scoped prompt (prompt-templates.md) — and log it: agent/role/model/effort/path appended to the project delegation log (path is a per-project parameter — default docs/handoff/delegation-log.md, see the installing project's README); effort not specifiable on ad-hoc Agent calls → record "(default)"
 - [ ] 4. Review: don't trust self-report — reproduce key claims (grep/run)
 - [ ] 5. Judge: pass / re-delegate (strengthen prompt) / escalate
@@ -41,7 +41,7 @@ Delegation Progress:
 
 **Step 1 — Decompose & classify.** Split the task into units of one type each: exploration/extraction, doc editing/structuring, general implementation, first-pass review, adversarial verification/judgment, or architecture/legal/money/authorization.
 
-**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type.
+**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing it overrides the definition's `model`, though `effort`/`tools` survive) — this only holds when the hook's pinned list includes that tier; see routing-matrix.md.
 
 **Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the two standard templates (read-only investigation, implementation/edit). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, and the expected output format.
 
@@ -63,6 +63,14 @@ Always strengthen the prompt alongside any model upgrade — raising the model w
 
 - Same root cause fails twice → escalate model/effort unconditionally on the retry.
 - Fails a 3rd time → stop delegating, report the blocker to the user.
+
+## Idle recovery
+
+Delegating a judgment call means setting a timebox — "act if nothing arrives by then," not "wait for notification." Pick the box at delegation time; long-running judgments deserve a longer box than a quick lookup, but the box must exist.
+
+- No response by the timebox → `SendMessage` the same agent to re-demand the verdict (context preserved).
+- No response to the re-demand → re-delegate to a fresh agent with a strengthened prompt.
+- Never block on a notification that may not arrive — waiting is not progress. This does not mean skipping the verification gate, only using recovery to reach it.
 
 ## Mandatory top-tier-model (fable) triggers
 
