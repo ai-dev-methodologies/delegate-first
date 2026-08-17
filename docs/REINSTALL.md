@@ -24,6 +24,7 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 | 로컬 사본 존재 | `ls <대상>/.claude/skills/delegate-first` | SKILL.md, references/, HANDOFF.md, NEW-REPO-PROMPT.md |
 | 훅 위치 | `ls ~/.claude/hooks/enforce-subagent-model.cjs` | 존재(전역 설치) |
 | 훅 등록 위치 | `grep -n "enforce-subagent-model" ~/.claude/settings.json "$DST/.claude/settings.json" 2>/dev/null` | 전역(`~/.claude/settings.json`)에 등록돼 있으면 전역 유지 / 대상 프로젝트 `.claude/settings.json`으로 전환하려면 그쪽에 등록 — 둘 다 없으면 §4의 2번(훅 차단 스모크)이 실패한다. 이 표의 판정이 §4-2번의 전제다. |
+| 동명 에이전트 model 핀 확인 | `grep -L '^model:' "$DST"/.claude/agents/{explorer-low,executor-med,executor-high,reviewer-high,judge-max}.md` | 출력 0건(모두 model 핀 보유). 핀이 없는 동명 에이전트가 있으면 훅 화이트리스트가 그 이름을 통과시켜 세션 모델 상속 구멍이 된다. |
 
 ## 1. 백업 (건너뛰기 금지)
 
@@ -107,6 +108,8 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-
 3. **tier 에이전트 스폰** — `subagent_type: explorer-low` 1회 호출 → haiku/low 적용 확인. **B-06([../BACKLOG.md](../BACKLOG.md), 정본 레포 PR #2)이 해소되었으므로, §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 수행한 뒤에는 이 3번이 수행 가능하다.** `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 이제 등록돼 있어, `model` 없이 tier를 호출해도 통과한다. 단 §3의 훅 전파 단계를 건너뛰었거나 전역(`~/.claude/hooks/`)에 tier 5종이 없는 구 버전이 남아 있으면 여전히 exit 2로 차단된다 — 우회하려고 `model`을 넘기면 통과는 하지만 그 순간 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합이 그대로 적용됐는지"를 검증한다는 3번의 목적 자체가 성립하지 않는다. **이 3번에서 막히는 것은 재설치가 뭔가를 깨뜨린 것이 아니라 발효 중인 훅 버전 불일치다** — 오퍼레이터가 이 3번에서 막혔다고 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것. 먼저 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계를 다시 수행한다.
 
 추가 확인: `grep -rn "delegating-execution" "$DST/.claude"` → 결과 0건(구 명칭 잔존 없음).
+
+추가 확인: 정본 레포에서 `bash scripts/smoke-hook.sh` 실행 → `PASS n/n` 확인(훅 스크립트 단위 회귀 없음).
 
 ## 5. 롤백
 
