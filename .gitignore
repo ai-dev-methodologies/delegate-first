@@ -1,0 +1,13 @@
+# OS/editor noise
+.DS_Store
+
+# Agent runtime state (not part of the canonical skill)
+.omc/
+.omx/
+
+# Local, per-machine Claude Code settings (hook registration lives here)
+.claude/settings.local.json
+
+# Python bytecode
+__pycache__/
+*.pyc
