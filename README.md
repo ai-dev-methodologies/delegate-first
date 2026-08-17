@@ -114,9 +114,9 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 1. **스킬 로드 확인** — 설치한 프로젝트 세션에서 `/delegate-first`를 호출해 `SKILL.md` 본문이 그대로 로드되는지 확인한다.
 2. **훅 차단 스모크** — `model` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. (차단되지 않으면 훅이 `settings.json`에 등록되지 않은 것이다 — 단, 역은 성립하지 않는다: 차단됐다고 해서 **이 프로젝트**에 등록됐다는 뜻은 아니다. `~/.claude/settings.json`에 같은 훅이 **전역**으로 이미 등록돼 있으면, 이 프로젝트의 `.claude/settings.json`을 지워도 스모크는 그대로 통과한다(2026-08-18 실측 — 전역 등록만으로 차단됨). 전역 등록과 프로젝트 등록을 구분하려면 (a) 스모크 전에 전역 등록을 일시 비활성화하거나 (b) 프로젝트 훅 command를 래퍼로 감싸 stderr에 출처를 직접 찍는다 — 예: `{ "type": "command", "command": "sh -c 'echo \"[hook-src=project]\" >&2; exec node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs\"'" }`. (이전에 검토했던 `--src=project` 같은 인자 부착 방식은 훅 스크립트가 인자를 무시해 stderr가 두 경로에서 동일하게 나오므로 출처 판별이 **성립하지 않는다** — 실제로 검증 가능한 것은 래퍼 방식뿐이다. 래퍼가 `exec` 직전에 자기 출처를 stderr에 찍으므로 훅 스크립트 자체를 고치지 않고도 확실히 동작한다.))
-3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — 단 현재는 B-06 제약으로 차단된다(아래 「알려진 제약」 먼저 읽을 것).
+3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — B-06 해소로 이제 수행 가능하다. 단 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
 
-**알려진 제약**: 현재 훅의 `MODEL_PINNED_TYPES`에는 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 등록돼 있지 않다. 그래서 tier 에이전트를 `model` 파라미터 없이 호출하면(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) exit 2로 차단된다. 지금은 tier 호출에도 `model`을 넘겨야 통과하는데, 그러면 호출 파라미터가 frontmatter의 `model`을 덮어쓴다(`effort`·`tools`·`disallowedTools`는 유지). 즉 `references/routing-matrix.md` §①의 "tier 에이전트는 model 없이 호출해도 예외로 통과한다"는 서술은 이 상태에서는 성립하지 않는다 — 해소 항목은 [BACKLOG.md](BACKLOG.md) **B-06**.
+**전제: 발효 중인 훅 버전**: B-06(정본 레포 PR #2)이 훅의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 추가해, tier 에이전트를 `model` 파라미터 없이 호출해도(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) 통과하도록 해소했다. **단 이것은 그 세션에서 실제로 발효 중인 훅이 이 레포의 최신 버전(tier 5종이 pinned에 포함된 버전)일 때만 성립한다.** 전역 `~/.claude/hooks/`에 tier 5종이 없는 구 버전이 설치돼 있으면, 그 전역 훅이 우선 실행되어 여전히 exit 2로 차단된다 — 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 3번 스모크가 차단되면 먼저 발효 중인 훅 버전부터 확인한다.
 
 ## 원칙 요약
 

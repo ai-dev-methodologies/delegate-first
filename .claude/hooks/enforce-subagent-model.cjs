@@ -14,6 +14,16 @@
  *     통과시킨다 (아래 MODEL_PINNED_TYPES).
  *   - 그 외 model 미지정 → exit 2 로 차단하고 라우팅 지침을 돌려준다.
  *   - break-glass(사람 전용): env ALLOW_INHERITED_SUBAGENT_MODEL=1
+ *
+ * 공급망 서약 (README.md "훅 공급망 고지"와 동일 계약):
+ *   이 훅은 레포에 커밋되어 배포되고, 헤드리스(-p/SDK) 세션에서는 workspace
+ *   trust 다이얼로그 없이 즉시 실행된다 — 대화형 세션의 trust 게이트가 없다.
+ *   그러므로 이 파일을 변경하는 모든 PR은 **사람이 diff를 직접 읽는다**
+ *   (리뷰 없이 머지하지 않는다).
+ *   불변식: 이 스크립트는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는
+ *   것 외에는 아무 동작도 하지 않는다 — require/fs/네트워크/child_process/
+ *   eval을 쓰지 않는다. 이 불변식을 깨는 변경(예: 파일 시스템 스캔, 외부
+ *   프로세스 실행 추가)은 이 서약 자체에 대한 별도 판단이 필요하다.
  */
 const MODEL_PINNED_TYPES = new Set([
   // 플러그인 정의에 model이 고정된 타입들 — 상속 위험 없음
@@ -25,6 +35,20 @@ const MODEL_PINNED_TYPES = new Set([
   "oh-my-claudecode:critic", // opus
   "oh-my-claudecode:planner", // opus
   "statusline-setup",
+
+  // delegate-first tier 에이전트 5종 (.claude/agents/*.md frontmatter 고정값)
+  // — 값은 각 파일의 frontmatter를 직접 읽어 확인한 것이며 추측이 아니다.
+  "explorer-low", // haiku/low
+  "executor-med", // sonnet/medium
+  "executor-high", // sonnet/high
+  "reviewer-high", // opus/high
+  "judge-max", // fable/max
+
+  // ⚠ 드리프트 주의: 이 목록은 정적 하드코딩이다 — .claude/agents/ 를 동적
+  // 스캔하지 않는다(이 훅은 require/fs 접근 0건이 감사 특성이자 공급망
+  // 신뢰의 근거이므로, 그 특성을 지키기 위해 동적 스캔을 의도적으로
+  // 도입하지 않았다). tier 에이전트를 추가·개명·삭제하면 이 목록도
+  // 반드시 함께 고쳐야 한다 — 자동 동기화 수단이 없다.
 ]);
 
 let raw = "";

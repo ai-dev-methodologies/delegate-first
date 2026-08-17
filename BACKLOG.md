@@ -26,7 +26,11 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 ## B-06 — 훅 MODEL_PINNED_TYPES에 tier 에이전트 5종 부재 (문서-강제장치 불일치)
 
-**상태**: 미착수 · **우선순위**: 1 (B-01과 동급 — 같은 "effort가 실제로 적용되는가" 문제의 양면)
+**상태**: 해결 (2026-08-18, PR #2) · **우선순위**: 1 (완료)
+
+**해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
+
+**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, 12케이스)까지다.
 
 `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
 
