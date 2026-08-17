@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 #
-# .githooks/pre-commit — B-07/B-02 린터 + 훅 스모크를 커밋 전에 돌린다.
+# .githooks/pre-commit — B-07/B-02 린터 + 린터 자체 회귀망 + 훅 스모크를 커밋 전에 돌린다.
 #
 # 이 훅은 자동 설치되지 않는다 — 쓰려면 `git config core.hooksPath .githooks`를
 # 사용자가 직접 실행한다. (Claude/에이전트가 git config를 대신 실행하지 않는다.)
+#
+# 한계(의도적, 동작 변경 아님): 아래 검사들은 **워킹 트리**를 대상으로 한다,
+# 스테이지된 인덱스가 아니다. `git add -p`로 부분 스테이징하면 커밋 대상과
+# 검사 대상이 어긋날 수 있다 — 이 레포 규모에서는 워킹 트리 검사가 단순하고
+# 충분하다고 판단해 그대로 둔다(스냅샷 기반 인덱스 검사로 바꾸는 것은 별도 결정).
 #
 set -u
 
@@ -13,12 +18,16 @@ echo "[pre-commit] scripts/lint-delegate-first.py 실행..."
 python3 "$REPO_ROOT/scripts/lint-delegate-first.py"
 LINT_STATUS=$?
 
+echo "[pre-commit] scripts/test-lint.sh 실행(린터 자체 회귀망, 실측 ~1초)..."
+bash "$REPO_ROOT/scripts/test-lint.sh"
+TEST_LINT_STATUS=$?
+
 echo "[pre-commit] scripts/smoke-hook.sh 실행..."
 bash "$REPO_ROOT/scripts/smoke-hook.sh"
 SMOKE_STATUS=$?
 
-if [ "$LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ]; then
-  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, smoke exit=$SMOKE_STATUS. 커밋을 막습니다." >&2
+if [ "$LINT_STATUS" -ne 0 ] || [ "$TEST_LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ]; then
+  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, test-lint exit=$TEST_LINT_STATUS, smoke exit=$SMOKE_STATUS. 커밋을 막습니다." >&2
   exit 1
 fi
 

@@ -48,8 +48,9 @@ SKILL.md (원칙 + 5단계 체크리스트)
 │   └── handoff/delegation-log.md      (위임 로그 — 스킬 3단계가 요구)
 ├── scripts/
 │   ├── smoke-hook.sh                  (훅 회귀 스모크)
-│   └── lint-delegate-first.py         (B-07+B-02 린터)
-├── .githooks/pre-commit               (린터+스모크 게이트, 옵트인)
+│   ├── lint-delegate-first.py         (B-07+B-02 린터)
+│   └── test-lint.sh                   (린터 자체 회귀망)
+├── .githooks/pre-commit               (린터+린터 회귀망+스모크 게이트, 옵트인)
 ├── .gitignore
 ├── BACKLOG.md
 └── README.md
@@ -99,7 +100,7 @@ break-glass는 **사람 전용**이다: `ALLOW_INHERITED_SUBAGENT_MODEL=1`. 에�
 
 **trust 동작 주의**: 대화형 세션은 workspace trust 다이얼로그를 수락하기 전까지 settings 파일의 훅을 보류한다. 그래서 "Agent 호출이 차단되지 않는다"가 항상 "훅 미등록"을 뜻하지는 않는다 — trust를 아직 수락하지 않은 상태일 수도 있다. 반대로 `-p`/SDK(헤드리스) 세션은 폴더를 신뢰된 것으로 취급해 커밋된 `.claude/settings.json`의 훅이 그대로 실행된다. 레포에 훅을 커밋해 배포할 때는 이 비대칭(대화형=trust 게이트, 헤드리스=즉시 활성)을 인지하고 있어야 한다.
 
-**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.)
+**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.) 이 서약의 범위는 `.claude/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
 
 ### B) 플러그인화
 
@@ -111,7 +112,7 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 - 기본 관례: `docs/handoff/delegation-log.md`
 - 다른 경로를 쓰려면: 설치 프로젝트의 `CLAUDE.md`에 한 줄로 명시한다 — 예 `delegate-first 위임 로그 경로: docs/ops/delegation-log.md`. 스킬 본문을 프로젝트마다 고쳐 갈라지게 만들지 않는다.
-- 로그 스키마를 강제하는 코드는 아직 없다(문서 지침). 스키마 예시는 [docs/handoff/delegation-log.md](docs/handoff/delegation-log.md) 헤더 참고.
+- 로그 스키마는 `scripts/lint-delegate-first.py` Check B가 강제한다(7컬럼·빈 셀 없음·날짜 형식·실행경로 허용 집합, [scripts/](#scripts) 참고) — 옵트인 pre-commit이나 수동 실행으로 검사한다. 스키마 예시는 [docs/handoff/delegation-log.md](docs/handoff/delegation-log.md) 헤더 참고.
 - Agent 툴 즉석 호출은 effort를 지정할 수 없다 → 로그의 effort 칸에 `(default)`로 기록한다.
 
 ## 검증 3단계 (설치 후 반드시 실행)
@@ -126,9 +127,10 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 ## scripts/
 
-- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1).
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
+- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 16건 + 음성(PASS 기대) 3건, 실측 ~1초.
 - `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
-- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 두 스크립트가 자동 실행된다(자동 설치되지 않음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 세 스크립트가 자동 실행된다(자동 설치되지 않음).
 
 ## 원칙 요약
 

@@ -6,7 +6,7 @@
 
 - `effort`: Agent 툴 즉석 호출은 effort 지정이 불가하므로 `(default)`로 적는다. tier 에이전트/Workflow `agent()`/`codex exec` 경로는 실제 값을 적는다.
 - `실행경로`: `Agent(tier)` / `Agent(ad-hoc)` / `Workflow agent()` / `codex exec`
-- `결과`: `pass` / `re-delegate` / `escalate` — 리뷰(4단계) 후에 채운다.
+- `결과`: 일반 위임은 `pass` / `re-delegate` / `escalate` — 리뷰(4단계) 후에 채운다. 리뷰/게이트 위임(reviewer-high, judge-max 등)은 판정 요약을 자유 텍스트로 덧붙일 수 있다 — 예 `FIX-THEN-MERGE (Cancer 0, Polyp 6, Cigarette 10)`. 이 자유 텍스트 관례는 2026-08-18부터 실제로 쓰여 왔고(PR #1~#4), 개수(Cancer/Polyp/Cigarette, NF 등)는 감사 시점에 되짚어볼 근거로 유용해 문서를 실태에 맞춰 갱신했다 — 린터(`scripts/lint-delegate-first.py` Check B)는 `결과` 컬럼을 비어 있지 않은지와 `(리뷰 대기)` 누적 건수만 검사하며, 값 자체를 `pass`/`re-delegate`/`escalate`로 제한하지 않는다(자유 텍스트 관례와 일부러 맞춘 설계).
 
 이 경로는 프로젝트 파라미터다 — 다른 경로를 쓰는 프로젝트는 `CLAUDE.md`에 명시한다(README 참고).
 
@@ -28,4 +28,7 @@
 | 2026-08-18 | reviewer-high | PR#3 스킬 본문 독립 리뷰 | opus | high(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Polyp 3, Cigarette 3) |
 | 2026-08-18 | judge-max | PR#3 릴리스 게이트 | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Cancer 0, NF 5) |
 | 2026-08-18 | executor-high | 판정 반영 봉합(게이트안 채택) | sonnet | high(frontmatter) | Agent(tier) | pass |
-| 2026-08-18 | executor-high | B-07+B-02 린터 구현 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | B-07+B-02 린터 구현 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | reviewer-high | PR#4 린터 독립 리뷰 | opus | high(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Polyp 6, Cigarette 10) |
+| 2026-08-18 | judge-max | PR#4 릴리스 게이트 | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Cancer 0, NF 5) |
+| 2026-08-18 | executor-high | 린터 미탐 봉합 + 자체 테스트 신설 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
