@@ -36,3 +36,6 @@
 | 2026-08-18 | executor-high | 게이트 후속 finding 4건 마무리 | sonnet | high(frontmatter) | Agent(tier) | pass (리뷰에서 P-1 회귀 발견·봉합) |
 | 2026-08-18 | reviewer-high | PR#5 후속 4건 독립 리뷰(헤더 변형 20종 전수) | opus | high(frontmatter) | Agent(tier) | FIX-THEN-MERGE (P-1 회귀 발견: 깨진 헤더 표가 통째로 미검사) |
 | 2026-08-18 | executor-high | P-1 회귀 봉합(잔여 검사 + 양성 테스트 2건) | sonnet | high(frontmatter) | Agent(tier) | pass (test-lint 22/22, 비공허성 확인) |
+| 2026-08-18 | executor-high | B-08 레포 쪽 규칙 예외 문구 작성 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | judge-max | PR#7 릴리스 게이트(전역 규칙 파급 적대 판정) | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (F1 필수, F2~F6) |
+| 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |

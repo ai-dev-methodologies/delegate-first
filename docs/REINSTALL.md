@@ -49,21 +49,46 @@ diff -u "$HOME/.claude/hooks/enforce-subagent-model.cjs" "$SRC/.claude/hooks/enf
 diff -u "$HOME/.claude/rules/subagent-model-routing.md"  "$SRC/.claude/rules/subagent-model-routing.md"
 ```
 
-**예상 diff는 2파일·아래 5개 논리 변경이다**(SKILL.md 1 + prompt-templates.md 4) (정본 이관 시 적용한 종속 치환). 여기 열거한 5군데는 **논리 단위**이고, `diff -ru`가 보여주는 **hunk 개수**는 인접 변경이 하나로 병합되는지에 따라 달라질 수 있다 — 실측으로는 4 hunk + `Only in` 표시 2줄로 나타난다. hunk 수를 세지 말고 각 hunk의 **내용**을 아래 5개와 대조한다:
+아래 기대 목록은 **실측(2026-08-18, `diff -ru`/`diff -u` 읽기 전용 대조, `goone-rest` 로컬 사본 vs 정본 워킹트리 PR #7 head)**이다. "예상 diff는 2파일·5개 논리 변경"이라던 과거 서술은 stale였다 — 실측은 **3파일**이며, `references/routing-matrix.md`가 목록에서 빠져 있었다.
 
-1. `SKILL.md` 3단계 — 위임 로그 경로가 하드코딩에서 **프로젝트 파라미터 문구**로 바뀜. 기본값은 `docs/handoff/delegation-log.md`로 동일하므로 goone-rest는 동작 변화 없음.
-2. `references/prompt-templates.md` §Contents 행 — `- Real examples from this project` → `- Worked examples (generic — replace with your own project's cases)`.
-3. `references/prompt-templates.md` Template 1 역할 placeholder의 goone 언급 제거.
-4. `references/prompt-templates.md` Template 1 "실제 예시" 블록이 **중립 예시**로 교체됨(goone 절대경로·ADR 번호·워크트리명 제거).
-5. `references/prompt-templates.md` Template 2 "실제 예시" 블록도 동일하게 중립 예시로 교체됨.
+### 스킬 트리 — 실측 3파일, hunk 7개(+ 디렉터리 전용표시 2줄)
 
-출력에 위 5개 논리 변경 **외의 내용**이 보이면 (hunk 수가 몇 개든) **멈추고** 무엇이 다른지 먼저 파악한다.
+1. **`SKILL.md`** (3 hunk)
+   - Step 2(Route) 서술 교정: "for the Agent tool) not at all" → "for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead" (PR#3, 커밋 5039ad5)
+   - Flow checklist 2·3번 + Step 2·3 본문: effort가 중요하면 tier 에이전트/Workflow `agent()`/`codex exec` 경로를 우선 선택하라는 지침, 위임 로그 경로를 "프로젝트 파라미터" 문구로, 판정/리뷰 위임에 timebox 명시를 요구 (PR#3, 커밋 98c5ab3 → 5039ad5에서 문구 보강)
+   - `## Idle recovery` 절 신설 — 타임박스·폴링 만료 감지(`ListAgents`/`Monitor`)·`SendMessage` 재요구·재위임·늦게 도착한 판정 처리 규칙 (PR#3, 커밋 98c5ab3 → 5039ad5에서 폴링·늦은 판정 문장 추가)
+2. **`references/prompt-templates.md`** (3 hunk)
+   - Contents 행 문구 교체(`Real examples from this project` → `Worked examples (generic ...)`)
+   - Template 1·2 "실제 예시"가 goone 고유 정보(절대경로·ADR 번호·워크트리명·API 이름)를 제거한 중립 예시로 교체
+   - 전부 정본 canonical화 시점(PR#1, 커밋 568f89d)에 적용된 치환 — goone-rest 로컬 사본은 그 이전 상태로 멈춰 있어 diff가 남는다.
+3. **`references/routing-matrix.md`** (1 hunk — 논리 변경 2건이 인접해 하나로 병합됨)
+   - "이 예외는 훅 pinned 목록에 그 tier가 등록돼 있을 때만 성립한다"는 전제 문장 추가 (PR#2/B-06, 커밋 aab93c5)
+   - 핀 누락으로 차단됐을 때 폴백은 그 tier의 frontmatter model 값을 그대로 명시(다른 값=조용한 강등) + 훅이 여러 벌이면 전부 실행되고 하나라도 차단하면 전체 차단 (PR#3, 커밋 5039ad5)
 
-에이전트 5종·훅은 **byte-identical**이라 diff가 비어야 한다. 비어 있지 않으면 로컬이 정본보다 앞서 있다는 뜻 — **덮어쓰기 전에 멈추고** 로컬 변경을 정본으로 역포팅한다.
+디렉터리 비교에는 추가로 `Only in $DST: HANDOFF.md` / `Only in $DST: NEW-REPO-PROMPT.md` 2줄이 뜬다 — 정상이다(§3 아래 "HANDOFF.md / NEW-REPO-PROMPT.md 처리" 참고, 삭제는 선택 사항).
 
-규칙 파일(`subagent-model-routing.md`)은 판정이 다르다 — 정본에서 라우팅 규칙을 고치면 diff가 발생하는 것이 **정상**이다. 이때는 "로컬이 앞서 있다"가 아니라 "**정본이 앞서 있다**"는 뜻이므로 멈추지 말고 §3의 cp로 전파한다. (역포팅 케이스와 헷갈리면 `git -C <정본레포> log -p -- .claude/rules/subagent-model-routing.md`로 정본 쪽 최근 변경 이력을 먼저 확인한다 — 로컬을 직접 고친 기억이 없는데 diff가 있다면 정본 갱신이다.)
+hunk 수를 세지 말고 각 hunk의 **내용**을 위 목록과 대조한다. 위 목록 **외의 내용**이 보이면 (hunk 수가 몇 개든) **멈추고** 무엇이 다른지 먼저 파악한다.
 
-> **결정 필요 (치환 #2)**: goone-rest의 프롬프트 템플릿에서 실제 goone 예시가 사라진다. 실무에서 그 예시가 유용하면 (a) 백업본에서 예시 블록만 goone 로컬로 되살리거나 (b) goone-rest의 자체 문서(`docs/handoff/`)에 프로젝트 예시집으로 옮긴다. 사용자 선택 사항이며 재설치 전에 확정한다.
+> **결정 필요 (prompt-templates.md의 goone 예시 제거)**: goone-rest의 프롬프트 템플릿에서 실제 goone 예시가 사라진다. 실무에서 그 예시가 유용하면 (a) 백업본에서 예시 블록만 goone 로컬로 되살리거나 (b) goone-rest의 자체 문서(`docs/handoff/`)에 프로젝트 예시집으로 옮긴다. 사용자 선택 사항이며 재설치 전에 확정한다.
+
+### 에이전트 5종 — byte-identical이어야 함(변경 없음)
+
+실측: `$DST/.claude/agents`와 `$SRC/.claude/agents`는 diff 없음(byte-identical). 이 기대는 지금도 유효하다 — 비어 있지 않으면 **로컬이 정본보다 앞서 있다**는 뜻이므로, **덮어쓰기 전에 멈추고** 로컬 변경을 정본으로 역포팅한다.
+
+### 훅 — 정본이 앞서 있음(과거 "byte-identical" 서술은 훅에는 더 이상 맞지 않음)
+
+실측(2026-08-18): `$HOME/.claude/hooks/enforce-subagent-model.cjs`(전역, 2026-07-16자 구버전)와 `$SRC/.claude/hooks/enforce-subagent-model.cjs`(정본 — tier 5종 `MODEL_PINNED_TYPES` 추가 + 공급망 서약 주석, PR#2/B-06 커밋 aab93c5) 사이에 diff가 **있다**. 과거 §2 서술("에이전트 5종·훅은 byte-identical이라 diff가 비어야 한다")은 그때는 맞았지만 이제 훅에는 맞지 않는다 — 훅은 정본이 앞서 있는 것이 B-06/B-08 이후 현재 **정상 상태**다. §3의 훅 전파 단계(`cp`)를 수행한 뒤에는 이 diff가 **비어야 한다** — 전파 후에도 diff가 있으면 멈추고 원인을 파악한다.
+
+### 규칙 파일 — 정본이 앞서 있음(diff 정상)
+
+실측(2026-08-18): `$HOME/.claude/rules/subagent-model-routing.md`(B-08 이전 상태)와 `$SRC/.claude/rules/subagent-model-routing.md`(PR #7 — §원칙2 예외 범위 한정 문장, §강제 장치 서술 완화·린터 대조 범위 명시) 사이에 diff가 있다. 규칙 파일은 판정이 다르다 — 정본에서 라우팅 규칙을 고치면 diff가 발생하는 것이 **정상**이다. 이때는 "로컬이 앞서 있다"가 아니라 "**정본이 앞서 있다**"는 뜻이므로 멈추지 말고 §3의 cp로 전파한다. (역포팅 케이스와 헷갈리면 `git -C <정본레포> log -p -- .claude/rules/subagent-model-routing.md`로 정본 쪽 최근 변경 이력을 먼저 확인한다 — 로컬을 직접 고친 기억이 없는데 diff가 있다면 정본 갱신이다.)
+
+### 목록이 다시 stale해지는 것을 막는 판정 절차
+
+이 §2 목록은 정본이 갱신될 때마다 낡는다. diff 출력이 위 목록과 다르면, 목록에 없다는 이유만으로 곧장 멈추지 말고 다음 순서로 판정한다:
+1. `git -C <정본레포> log --oneline --merges main`으로 머지 PR 이력을 확인한다.
+2. diff에 나온 hunk가 그 이력의 어느 머지 PR로 설명되는지 대조한다(`git -C <정본레포> show <커밋> -- <파일>`).
+3. 설명되면 — 즉 "정본이 앞서 있다"고 판정되면 — 멈추지 말고 §3으로 진행한다. 정본 이력 어디에도 설명되지 않는 hunk가 있으면 멈추고 원인을 파악한다(로컬 역포팅 필요 여부 포함).
 
 ## 3. 교체
 

@@ -9,7 +9,7 @@
 
 ## B-08 — 전역 훅 갱신 + 규칙 §원칙2 예외 문구 (사용자 승인 필요)
 
-**상태**: 미착수 · **우선순위**: 0 (최우선, 사용자 승인 대기)
+**상태**: 레포 쪽 반영 완료 (2026-08-18, PR #7) · 전역 전파·end-to-end 실측은 메인 세션이 승인받아 수행 중
 
 **이 항목은 사용자 승인 없이는 진행 불가**임을 명시한다.
 
@@ -18,6 +18,19 @@
 ② `.claude/rules/subagent-model-routing.md` §원칙 2("모든 Agent 호출은 `model`을 명시한다 — 세션 모델 상속 금지")에 예외 구절을 추가한다: 정의 frontmatter에 `model`이 고정돼 있고 **등록된 모든 훅**의 pinned 목록에 등재된 tier 에이전트는 `model` 생략이 원칙이다(호출 파라미터가 정의를 덮어쓰므로, 생략이 오히려 pinned 조합을 보존한다).
 ③ 실측(2026-08-18, `cmp`): 훅(`enforce-subagent-model.cjs`)은 레포본과 전역본이 **이미 다르다**(전역이 구버전) — 이것이 ①이 필요한 이유다. 반면 규칙 파일(`subagent-model-routing.md`)은 레포본과 전역본이 **byte-identical**이다 — 즉 ②를 한쪽만 고치면 지금까지 없던 desync가 새로 생긴다. 따라서 ①과 ②는 **같은 PR/승인 대화에서 동기 갱신**해야 한다.
 ④ 갱신 직후 B-06의 완료 기준(end-to-end 실측: `model` 없는 tier 스폰 통과 + 범용 호출 차단 유지)을 그 자리에서 수행해 B-06을 완결한다.
+
+**진행 상황 (2026-08-18, PR #7)**: 레포 쪽 절반(②)만 반영했다 — `.claude/rules/subagent-model-routing.md` §원칙 2에 예외 문구 추가 + §강제 장치에 tier 5종·린터 포인터 보강. `~/.claude/`는 이 PR 범위 밖(경계 위반 금지)이라 건드리지 않았다. 남은 것: ① 전역 훅 `~/.claude/hooks/enforce-subagent-model.cjs` 갱신 ② 전역 규칙 `~/.claude/rules/subagent-model-routing.md` 갱신(이 PR 머지 후, 레포본과 동기화) ③ B-06 완료 기준 end-to-end 실측 — 세 가지 모두 메인 세션이 사용자 승인과 함께 수행한다.
+
+**게이트 체크리스트 (메인 세션이 전역 전파를 수행할 때 그대로 따를 것)**:
+
+- **순서 — (a) 전역 훅 → (b) 전역 규칙 → (c) end-to-end 실측 → (d) 재설치. 역순 금지.** 규칙만 먼저 갱신하면 새 세션이 "tier는 model 생략"이라는 새 규칙을 보고도 구버전 전역 훅(tier 5종 미등록)에 막혀 exit 2를 받고, 그 stderr 안내(`opus` 등 일반 model 권고)를 따라 tier를 **강등된 model로 재호출**할 위험이 있다.
+- **발효 시점 차이**: 훅은 **즉시** 발효한다(Node가 매 호출마다 파일을 fresh exec) — 전파 직후 같은 세션에서도 적용된다. 규칙(`~/.claude/rules/`)은 **새 세션부터**만 발효한다 — 이미 로드된 세션의 컨텍스트에는 반영되지 않는다.
+- **(c) 판정 기준 — 4단계, 순서 고정**:
+  1. **음성 대조 먼저**: 범용 타입(`subagent_type`을 tier가 아닌 일반 에이전트로) `model` 없이 호출 → 여전히 exit 2로 차단되는지 확인. **여기서 통과(차단 안 됨)하면 훅 미등록 또는 env 누출**이므로 즉시 중단하고 원인을 먼저 잡는다 — 이 경우 아래 양성 결과는 전부 무효(훅이 아예 안 걸린 상태에서 나온 "성공"이므로).
+  2. **양성**: tier(예: `explorer-low`) `model` 없이 호출 → 스폰 성공(차단 없음).
+  3. **스폰 성공만으로 합격 처리하지 말 것** — transcript(`~/.claude/projects/<세션>/subagents/agent-*.meta.json`, 또는 세션 jsonl)에서 실제로 적용된 `model`이 그 tier의 frontmatter 값(예: haiku)과 일치하고 `effort`가 frontmatter 값(예: low)과 일치하는지 확인한다. 값 검증 없이는 "차단 안 됨 = 정확한 model/effort 적용"을 보장할 수 없다(훅은 값 자체를 검증하지 않는다 — B-11 참고).
+  4. **사후 음성 재확인**: 양성 확인 후 다시 한번 범용 무model 호출을 시도해 차단이 여전히 살아 있는지 재확인(전파 과정에서 화이트리스트가 의도치 않게 넓어지지 않았는지).
+- **백업**: (a)(b)는 `docs/REINSTALL.md`가 정의한 절차 밖의 **ad-hoc 복사**다 — REINSTALL §1의 백업 스텝이 자동으로 커버하지 않으므로 별도 백업이 필수다. git 폴백도 존재한다: 구 전역 훅은 정본 레포 커밋 `568f89d`(PR#1, 최초 이관) 시점의 레포본과 byte-identical, 구 전역 규칙은 현재 `main`(이 PR #7 머지 전)과 동일 — 둘 다 필요시 `git show 568f89d:.claude/hooks/enforce-subagent-model.cjs` / `git show main:.claude/rules/subagent-model-routing.md`로 복원 가능하다.
 
 ---
 
@@ -48,7 +61,7 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 **해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
 
-**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다.
+**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다. B-08의 전역 전파(①②) 완료 후 실측이 수행되면 이 완료 기준이 충족된다(B-08 참조).
 
 **해소 전 상태(이력)**: `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
 
@@ -149,3 +162,31 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 대가: 작업 중 `(리뷰 대기)` 행이 3건 이상 쌓이면 커밋이 막힌다(현재 WARN 조건 — 실제 판정은 `> MAX_PENDING(2)`이므로 3건째부터 걸린다).
 
 소유자 결정 사항이며, 결정 전까지 기본 모드 유지.
+
+---
+
+## B-11 — 훅에 tier→기대 model 정적 map 검토
+
+**상태**: 미착수 · **우선순위**: 2
+
+게이트 제안: 훅(`enforce-subagent-model.cjs`)이 `model` **값**을 검증하지 않는다 — `toolInput.model`이 비어 있지 않은 문자열이기만 하면(line 94 `if (typeof model === "string" && model.trim()) process.exit(0);`) 통과시킨다. 그래서 `judge-max`에 `opus`를 넘겨도 통과한다(조용한 강등). 실측(2026-08-18): 쓰레기 값 `totally-invalid-model-xyz`를 넘겨도 같은 조건으로 exit 0이 된다 — 값 검증 자체가 없기 때문에 임의 문자열이 전부 통과한다.
+
+훅 주석(`MODEL_PINNED_TYPES` 옆)에 이미 tier별 기대 model/effort 값이 적혀 있으므로(예: `judge-max` → `// fable/max`), 이를 **tier → 기대 model 정적 map**으로 바꾸고 `model`이 지정된 호출에서 `subagent_type`이 pinned tier이면서 넘긴 값이 그 tier의 기대값과 다르면 차단하는 검사를 추가할 수 있다. `require`/`fs` 0건 불변식(공급망 서약)은 그대로 유지한 채(정적 map은 하드코딩 데이터일 뿐 동적 스캔이 아님) 강등을 기계적으로 봉인할 수 있다.
+
+**트레이드오프**: 의도적으로 tier 기본값과 다른 model을 쓰고 싶은 정당한 경우(예: 실험적으로 `judge-max`를 `opus`로 낮춰 비용 비교)가 이 검사에 막힌다. break-glass 경로(`ALLOW_INHERITED_SUBAGENT_MODEL=1`과 유사한 사람 전용 env, 또는 별도 플래그)를 함께 설계해야 하며, 설계 없이 map만 추가하면 정당한 override까지 차단하는 과잉 규제가 된다.
+
+**할 일(미착수)**: map 자료구조 설계 + 값 불일치 차단 로직 + break-glass 경로 + 스모크 테스트(`scripts/smoke-hook.sh`) 케이스 추가.
+
+---
+
+## B-12 — named 스폰에서 frontmatter effort 미유지 관찰
+
+**상태**: 관찰 필요(단정 금지) · **우선순위**: 3
+
+게이트가 관찰한 반례 1건: `name` 파라미터를 동반한 스폰(in_process_teammate 경로로 추정)에서 `explorer-low`가 정의 frontmatter의 `effort: low`가 아니라 `effort: max`로 실행됐다. 같은 세션의 형제 표준 스폰(named 없이) 3건은 frontmatter effort를 그대로 유지했다.
+
+표본이 **1건**이므로 이것을 일반 규칙("named 스폰은 항상 effort를 안 지킨다")으로 단정하지 않는다 — 재현·표본 확대가 필요한 **관찰**로만 기록한다.
+
+**확인 방법**: 해당 세션 transcript에서 실제 적용된 effort 값을 확인한다 — `~/.claude/projects/<세션>/subagents/agent-*.meta.json` 파일의 `effort` 필드, 또는 세션 jsonl 로그에서 `"effort"` 키 값을 grep해 named 스폰과 표준 스폰을 대조한다.
+
+**할 일(미착수)**: 추가 named 스폰 사례를 수집해 표본을 늘리고, 재현되면 원인(in_process_teammate 경로가 frontmatter effort를 무시하는지, 파라미터 전달 버그인지)을 좁힌다. 재현 안 되면 관찰을 폐기하거나 "1회성 이상현상"으로 하향한다.
