@@ -24,7 +24,7 @@ The main session's model and reasoning-effort *setting* are the user's call (ses
 | Review of a subagent's output | Medium |
 | Judgment, design, or escalation diagnosis | Deep |
 
-Delegated effort is a separate matter, decided by [references/routing-matrix.md](references/routing-matrix.md) — not by this section. The execution path determines whether effort can even be specified: Workflow `agent()`'s `effort` param, `codex exec`'s `model_reasoning_effort`, or (for the Agent tool) not at all — see routing-matrix.md for details.
+Delegated effort is a separate matter, decided by [references/routing-matrix.md](references/routing-matrix.md) — not by this section. The execution path determines whether effort can even be specified: Workflow `agent()`'s `effort` param, `codex exec`'s `model_reasoning_effort`, or (for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead — see routing-matrix.md for details.
 
 ## Flow checklist
 
@@ -41,9 +41,9 @@ Delegation Progress:
 
 **Step 1 — Decompose & classify.** Split the task into units of one type each: exploration/extraction, doc editing/structuring, general implementation, first-pass review, adversarial verification/judgment, or architecture/legal/money/authorization.
 
-**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing it overrides the definition's `model`, though `effort`/`tools` survive) — this only holds when the hook's pinned list includes that tier; see routing-matrix.md.
+**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing it overrides the definition's `model`, though `effort`/`tools` survive) — this only holds when every registered hook's pinned list includes that tier; see routing-matrix.md.
 
-**Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the two standard templates (read-only investigation, implementation/edit). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, and the expected output format.
+**Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the two standard templates (read-only investigation, implementation/edit). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, the expected output format, and — for verdict/review delegations — a timebox.
 
 **Step 4 — Review.** A subagent's self-report is not evidence on its own. Reproduce its central claim yourself — grep the file it says it edited, run the test it says passes, read the diff it says exists.
 
@@ -68,8 +68,11 @@ Always strengthen the prompt alongside any model upgrade — raising the model w
 
 Delegating a judgment call means setting a timebox — "act if nothing arrives by then," not "wait for notification." Pick the box at delegation time; long-running judgments deserve a longer box than a quick lookup, but the box must exist.
 
-- No response by the timebox → `SendMessage` the same agent to re-demand the verdict (context preserved).
+- Detect the expiry by polling — `ListAgents`/`Monitor` when the harness provides them — not by waiting for a notification that may not arrive.
+- No response by the timebox → `SendMessage` (when the harness provides it) the same agent to re-demand the verdict (context preserved).
 - No response to the re-demand → re-delegate to a fresh agent with a strengthened prompt.
+- If the original agent's verdict arrives late, after re-delegation, it is still valid — review both reports, and let the more adverse verdict govern until it is rebutted. Recovery replaces silence, not the verdict.
+- If the re-delegated agent is also unresponsive → stop and report the blocker to the user. For a verdict under the fable-forced triggers, recovery's endpoint is the user, not self-approval.
 - Never block on a notification that may not arrive — waiting is not progress. This does not mean skipping the verification gate, only using recovery to reach it.
 
 ## Mandatory top-tier-model (fable) triggers
