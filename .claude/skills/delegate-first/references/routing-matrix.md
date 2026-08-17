@@ -24,7 +24,7 @@ tier 에이전트 정의(`.claude/agents/*.md`)는 각 5종을 [SKILL.md](../SKI
 
 ### ① Agent 툴
 - 즉석 호출(`subagent_type`을 범용 에이전트로 지정)은 `model`만 지정 가능하고 effort는 지정 불가(기본값 사용).
-- **tier 에이전트를 `subagent_type`으로 지정하면 예외다** — `.claude/agents/*.md` frontmatter에 `model`+`effort`가 이미 박혀 있어, Agent 툴 호출만으로 그 조합이 그대로 적용된다(예: `subagent_type: judge-max` → fable/max). effort가 필요한 작업은 우선 tier 에이전트가 있는지부터 확인한다.
+- **tier 에이전트를 `subagent_type`으로 지정하면 예외다** — `.claude/agents/*.md` frontmatter에 `model`+`effort`가 이미 박혀 있어, Agent 툴 호출만으로 그 조합이 그대로 적용된다(예: `subagent_type: judge-max` → fable/max). effort가 필요한 작업은 우선 tier 에이전트가 있는지부터 확인한다. **전제**: 이 예외는 훅(`enforce-subagent-model.cjs`)의 `MODEL_PINNED_TYPES`에 그 tier 에이전트가 실제로 등록돼 있을 때만 성립한다 — 등록돼 있지 않으면 `model` 없는 호출은 exit 2로 차단되고, 우회로 `model`을 넘기면 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합 그대로"가 깨진다.
 - 범용 위임 — 탐색·구현·리뷰 1차 대부분은 이 경로로 충분하다.
 
 ### ② Workflow `agent()`

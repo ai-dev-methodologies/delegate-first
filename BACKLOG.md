@@ -26,14 +26,30 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 ## B-06 — 훅 MODEL_PINNED_TYPES에 tier 에이전트 5종 부재 (문서-강제장치 불일치)
 
-**상태**: 미착수 · **우선순위**: 1 (B-01과 동급 — 같은 "effort가 실제로 적용되는가" 문제의 양면)
+**상태**: 코드 반영 완료 (2026-08-18, PR #2) · end-to-end 실측 대기 (전역 훅 갱신 후) · **우선순위**: 1 (완료)
 
-`references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
+**해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
 
-**할 일**: `MODEL_PINNED_TYPES`에 tier 5종 추가(+ 목록이 스킬 트리와 갈라지지 않게 유지하는 방법 검토), 그리고 routing-matrix.md §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제 명시.
+**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다.
+
+**해소 전 상태(이력)**: `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
+
+**할 일 (완료)**: `MODEL_PINNED_TYPES`에 tier 5종 추가(+ 목록이 스킬 트리와 갈라지지 않게 유지하는 방법 검토), 그리고 routing-matrix.md §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제 명시. (목록 드리프트를 기계적으로 잡는 방법 검토는 B-07로 이관.)
 - (선택) 이 항목처럼 `enforce-subagent-model.cjs`를 실제로 수정하는 PR에서는, README의 훅 공급망 서약("`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다")을 훅 파일 헤더 주석에도 복제할지 그 PR에서 함께 판단한다. (참고: 이번 NF-1~NF-8 봉합 PR은 `enforce-subagent-model.cjs`가 원문 바이트 보존 대상이라 건드리지 않았다.)
 
-**완료 기준**: 훅 등록 세션에서 `subagent_type: explorer-low`를 `model` 없이 호출해 **통과**하고, `model` 미지정 범용 호출은 여전히 차단되는 것을 실측으로 확인.
+**완료 기준**: 훅 등록 세션에서 `subagent_type: explorer-low`를 `model` 없이 호출해 **통과**하고, `model` 미지정 범용 호출은 여전히 차단되는 것을 실측으로 확인. — 미충족(위 "남은 미검증 항목" 참조: 전역 훅 갱신 후 end-to-end 실측 대기 중).
+
+---
+
+## B-07 — tier 에이전트 ↔ 훅 pinned 목록 드리프트 린트
+
+**상태**: 미착수 · **우선순위**: 2
+
+pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`)이 `.claude/agents/` 실제 내용과 갈라지는 것을 기계적으로 잡는 대역 검사가 없다. 훅 안에서 fs 스캔하는 방식은 훅의 감사 특성(require/fs/네트워크/child_process/eval 0건이 공급망 신뢰의 근거)을 훼손하므로 배제한다(B-06에서 판단 완료). B-06의 "목록이 스킬 트리와 갈라지지 않게 유지하는 방법 검토" 잔여 과제를 여기로 이관했다(고아 방지).
+
+**후보 방향**: `scripts/` 린터(각 tier 파일에 `model:` 존재 + pinned 목록과 `.claude/agents/`의 이름 집합이 일치하는지 검사) + 필요 시 pre-commit.
+
+**완료 기준**: 가장 위험한 fail-open 모드(tier 에이전트 frontmatter의 `model`을 제거하거나 `inherit`로 바꾸는데 pinned 목록에는 그 이름이 잔존하는 경우)를 이 린터가 잡아야 한다.
 
 ---
 
@@ -65,6 +81,8 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 묶어 여러 레포에 재사용하는 경로. 2026-08-17 이관 시점에는 미구현 — 로컬 `.claude/` 복사(경로 A)만 존재한다.
 
 **트리거**: 설치 대상 프로젝트가 3곳을 넘어가면 복사 방식의 드리프트 비용이 플러그인 작성 비용을 넘는다.
+
+**리스크**: 플러그인화하면 `subagent_type`이 `delegate-first:executor-high` 형태로 바뀌어 현행 훅 pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`, 비수식 일반명만 등록)에서 **차단된다**(실측 확인). 따라서 B-04는 훅 pinned 목록 네임스페이스 갱신 PR을 반드시 동반해야 하며, 안 하면 B-06이 새 이름(`delegate-first:*`)으로 재발한다.
 
 ---
 
