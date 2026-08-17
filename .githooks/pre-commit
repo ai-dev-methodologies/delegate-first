@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# .githooks/pre-commit — B-07/B-02 린터 + 훅 스모크를 커밋 전에 돌린다.
+#
+# 이 훅은 자동 설치되지 않는다 — 쓰려면 `git config core.hooksPath .githooks`를
+# 사용자가 직접 실행한다. (Claude/에이전트가 git config를 대신 실행하지 않는다.)
+#
+set -u
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." && pwd))"
+
+echo "[pre-commit] scripts/lint-delegate-first.py 실행..."
+python3 "$REPO_ROOT/scripts/lint-delegate-first.py"
+LINT_STATUS=$?
+
+echo "[pre-commit] scripts/smoke-hook.sh 실행..."
+bash "$REPO_ROOT/scripts/smoke-hook.sh"
+SMOKE_STATUS=$?
+
+if [ "$LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ]; then
+  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, smoke exit=$SMOKE_STATUS. 커밋을 막습니다." >&2
+  exit 1
+fi
+
+echo "[pre-commit] 통과."
+exit 0

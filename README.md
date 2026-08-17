@@ -46,6 +46,10 @@ SKILL.md (원칙 + 5단계 체크리스트)
 │   ├── REINSTALL.md                   (정본 → 프로젝트 로컬 재설치 절차)
 │   ├── HANDOFF-2026-08-17.md          (최초 이관 패키지 원본)
 │   └── handoff/delegation-log.md      (위임 로그 — 스킬 3단계가 요구)
+├── scripts/
+│   ├── smoke-hook.sh                  (훅 회귀 스모크)
+│   └── lint-delegate-first.py         (B-07+B-02 린터)
+├── .githooks/pre-commit               (린터+스모크 게이트, 옵트인)
 ├── .gitignore
 ├── BACKLOG.md
 └── README.md
@@ -119,6 +123,12 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — B-06 해소로 이제 수행 가능하다. 단 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
 
 **전제: 발효 중인 훅 버전**: B-06(정본 레포 PR #2)이 훅의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 추가해, tier 에이전트를 `model` 파라미터 없이 호출해도(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) 통과하도록 해소했다. **단 이것은 그 세션에서 실제로 발효 중인 훅이 이 레포의 최신 버전(tier 5종이 pinned에 포함된 버전)일 때만 성립한다.** 전역(`~/.claude/settings.json`)과 프로젝트(`.claude/settings.json`)의 동일 matcher(`Agent`) PreToolUse 훅은 **우선순위가 아니라 가산적으로 모두 실행되며, 등록된 훅 중 하나라도 exit 2면 차단**된다(훅 실행 **순서** 자체는 미확인이므로 순서를 단정하지 않는다). 즉 전역 `~/.claude/hooks/`에 tier 5종이 없는 구 버전이 남아 있으면, 그 구 버전이 exit 2를 반환해 프로젝트 쪽이 최신이어도 여전히 차단된다 — 오퍼레이터는 "발효 중인 하나만 갱신"이 아니라 **등록된 모든 사본**을 갱신해야 한다. 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 3번 스모크가 차단되면 먼저 발효 중인 훅 버전부터 확인한다.
+
+## scripts/
+
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1).
+- `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 두 스크립트가 자동 실행된다(자동 설치되지 않음).
 
 ## 원칙 요약
 

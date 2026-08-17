@@ -27,4 +27,5 @@
 | 2026-08-18 | executor-high | B-01·B-03 SKILL.md 규율 보강 | sonnet | high(frontmatter) | Agent(tier) | pass |
 | 2026-08-18 | reviewer-high | PR#3 스킬 본문 독립 리뷰 | opus | high(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Polyp 3, Cigarette 3) |
 | 2026-08-18 | judge-max | PR#3 릴리스 게이트 | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (Cancer 0, NF 5) |
-| 2026-08-18 | executor-high | 판정 반영 봉합(게이트안 채택) | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | 판정 반영 봉합(게이트안 채택) | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | executor-high | B-07+B-02 린터 구현 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
