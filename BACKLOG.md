@@ -9,7 +9,7 @@
 
 ## B-08 — 전역 훅 갱신 + 규칙 §원칙2 예외 문구 (사용자 승인 필요)
 
-**상태**: 미착수 · **우선순위**: 0 (최우선, 사용자 승인 대기)
+**상태**: 레포 쪽 반영 완료 (2026-08-18, PR #7) · 전역 전파·end-to-end 실측은 메인 세션이 승인받아 수행 중
 
 **이 항목은 사용자 승인 없이는 진행 불가**임을 명시한다.
 
@@ -18,6 +18,8 @@
 ② `.claude/rules/subagent-model-routing.md` §원칙 2("모든 Agent 호출은 `model`을 명시한다 — 세션 모델 상속 금지")에 예외 구절을 추가한다: 정의 frontmatter에 `model`이 고정돼 있고 **등록된 모든 훅**의 pinned 목록에 등재된 tier 에이전트는 `model` 생략이 원칙이다(호출 파라미터가 정의를 덮어쓰므로, 생략이 오히려 pinned 조합을 보존한다).
 ③ 실측(2026-08-18, `cmp`): 훅(`enforce-subagent-model.cjs`)은 레포본과 전역본이 **이미 다르다**(전역이 구버전) — 이것이 ①이 필요한 이유다. 반면 규칙 파일(`subagent-model-routing.md`)은 레포본과 전역본이 **byte-identical**이다 — 즉 ②를 한쪽만 고치면 지금까지 없던 desync가 새로 생긴다. 따라서 ①과 ②는 **같은 PR/승인 대화에서 동기 갱신**해야 한다.
 ④ 갱신 직후 B-06의 완료 기준(end-to-end 실측: `model` 없는 tier 스폰 통과 + 범용 호출 차단 유지)을 그 자리에서 수행해 B-06을 완결한다.
+
+**진행 상황 (2026-08-18, PR #7)**: 레포 쪽 절반(②)만 반영했다 — `.claude/rules/subagent-model-routing.md` §원칙 2에 예외 문구 추가 + §강제 장치에 tier 5종·린터 포인터 보강. `~/.claude/`는 이 PR 범위 밖(경계 위반 금지)이라 건드리지 않았다. 남은 것: ① 전역 훅 `~/.claude/hooks/enforce-subagent-model.cjs` 갱신 ② 전역 규칙 `~/.claude/rules/subagent-model-routing.md` 갱신(이 PR 머지 후, 레포본과 동기화) ③ B-06 완료 기준 end-to-end 실측 — 세 가지 모두 메인 세션이 사용자 승인과 함께 수행한다.
 
 ---
 
@@ -48,7 +50,7 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 **해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
 
-**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다.
+**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다. B-08의 전역 전파(①②) 완료 후 실측이 수행되면 이 완료 기준이 충족된다(B-08 참조).
 
 **해소 전 상태(이력)**: `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
 
