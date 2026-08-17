@@ -46,6 +46,11 @@ SKILL.md (원칙 + 5단계 체크리스트)
 │   ├── REINSTALL.md                   (정본 → 프로젝트 로컬 재설치 절차)
 │   ├── HANDOFF-2026-08-17.md          (최초 이관 패키지 원본)
 │   └── handoff/delegation-log.md      (위임 로그 — 스킬 3단계가 요구)
+├── scripts/
+│   ├── smoke-hook.sh                  (훅 회귀 스모크)
+│   ├── lint-delegate-first.py         (B-07+B-02 린터)
+│   └── test-lint.sh                   (린터 자체 회귀망)
+├── .githooks/pre-commit               (린터+린터 회귀망+스모크 게이트, 옵트인)
 ├── .gitignore
 ├── BACKLOG.md
 └── README.md
@@ -95,7 +100,7 @@ break-glass는 **사람 전용**이다: `ALLOW_INHERITED_SUBAGENT_MODEL=1`. 에�
 
 **trust 동작 주의**: 대화형 세션은 workspace trust 다이얼로그를 수락하기 전까지 settings 파일의 훅을 보류한다. 그래서 "Agent 호출이 차단되지 않는다"가 항상 "훅 미등록"을 뜻하지는 않는다 — trust를 아직 수락하지 않은 상태일 수도 있다. 반대로 `-p`/SDK(헤드리스) 세션은 폴더를 신뢰된 것으로 취급해 커밋된 `.claude/settings.json`의 훅이 그대로 실행된다. 레포에 훅을 커밋해 배포할 때는 이 비대칭(대화형=trust 게이트, 헤드리스=즉시 활성)을 인지하고 있어야 한다.
 
-**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.)
+**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.) 이 서약의 범위는 `.claude/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
 
 ### B) 플러그인화
 
@@ -107,7 +112,7 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 - 기본 관례: `docs/handoff/delegation-log.md`
 - 다른 경로를 쓰려면: 설치 프로젝트의 `CLAUDE.md`에 한 줄로 명시한다 — 예 `delegate-first 위임 로그 경로: docs/ops/delegation-log.md`. 스킬 본문을 프로젝트마다 고쳐 갈라지게 만들지 않는다.
-- 로그 스키마를 강제하는 코드는 아직 없다(문서 지침). 스키마 예시는 [docs/handoff/delegation-log.md](docs/handoff/delegation-log.md) 헤더 참고.
+- 로그 스키마는 `scripts/lint-delegate-first.py` Check B가 강제한다(7컬럼·빈 셀 없음·날짜 형식·실행경로 허용 집합, [scripts/](#scripts) 참고) — 옵트인 pre-commit이나 수동 실행으로 검사한다. 스키마 예시는 [docs/handoff/delegation-log.md](docs/handoff/delegation-log.md) 헤더 참고.
 - Agent 툴 즉석 호출은 effort를 지정할 수 없다 → 로그의 effort 칸에 `(default)`로 기록한다.
 
 ## 검증 3단계 (설치 후 반드시 실행)
@@ -119,6 +124,13 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — B-06 해소로 이제 수행 가능하다. 단 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
 
 **전제: 발효 중인 훅 버전**: B-06(정본 레포 PR #2)이 훅의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 추가해, tier 에이전트를 `model` 파라미터 없이 호출해도(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) 통과하도록 해소했다. **단 이것은 그 세션에서 실제로 발효 중인 훅이 이 레포의 최신 버전(tier 5종이 pinned에 포함된 버전)일 때만 성립한다.** 전역(`~/.claude/settings.json`)과 프로젝트(`.claude/settings.json`)의 동일 matcher(`Agent`) PreToolUse 훅은 **우선순위가 아니라 가산적으로 모두 실행되며, 등록된 훅 중 하나라도 exit 2면 차단**된다(훅 실행 **순서** 자체는 미확인이므로 순서를 단정하지 않는다). 즉 전역 `~/.claude/hooks/`에 tier 5종이 없는 구 버전이 남아 있으면, 그 구 버전이 exit 2를 반환해 프로젝트 쪽이 최신이어도 여전히 차단된다 — 오퍼레이터는 "발효 중인 하나만 갱신"이 아니라 **등록된 모든 사본**을 갱신해야 한다. 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 3번 스모크가 차단되면 먼저 발효 중인 훅 버전부터 확인한다.
+
+## scripts/
+
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
+- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 16건 + 음성(PASS 기대) 3건, 실측 ~1초.
+- `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 세 스크립트가 자동 실행된다(자동 설치되지 않음).
 
 ## 원칙 요약
 
