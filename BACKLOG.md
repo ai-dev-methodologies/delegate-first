@@ -116,7 +116,7 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 **리스크**: 플러그인화하면 `subagent_type`이 `delegate-first:executor-high` 형태로 바뀌어 현행 훅 pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`, 비수식 일반명만 등록)에서 **차단된다**(실측 확인). 따라서 B-04는 훅 pinned 목록 네임스페이스 갱신 PR을 반드시 동반해야 하며, 안 하면 B-06이 새 이름(`delegate-first:*`)으로 재발한다.
 
-플러그인화로 tier 이름이 `delegate-first:*`가 되면 **린터 Check A(B-07)의 커버리지도 조용히 사라진다** — 린터는 `:`가 든 네임스페이스 항목을 "이 레포 밖 정의"로 보고 **무출력 면제**하기 때문이다(`scripts/lint-delegate-first.py`의 `if ":" in name: continue`, 실측 확인). 즉 B-04는 훅 pinned 목록 갱신 + 린터의 네임스페이스 처리 갱신을 **함께** 해야 한다.
+플러그인화로 tier 이름이 `delegate-first:*`가 되면 **린터 Check A(B-07)의 정방향 fail-open 검출(pinned↔frontmatter model 정합성)은 조용히 사라진다** — 린터는 `:`가 든 네임스페이스 항목을 "이 레포 밖 정의"로 보고 정방향 검사에서 면제하기 때문이다(`scripts/lint-delegate-first.py`의 `if ":" in name: continue`, 실측: 비수식명이면 FAIL 1/exit 1인 fail-open이 `delegate-first:*`로 바꾸면 FAIL 0/exit 0으로 사라짐). 다만 완전한 무출력은 아니다 — 역방향 검사("agents/에 있지만 pinned 목록엔 없음")가 대신 **WARN**을 내고 `--strict`에서는 exit 1이 된다(실측 확인, WARN이라 기본 모드에선 커밋을 막지 못함). 즉 실질은 "FAIL이 WARN으로 강등"이다. B-04는 훅 pinned 목록 갱신 + 린터의 네임스페이스 처리 갱신을 **함께** 해야 한다.
 
 ---
 
@@ -146,6 +146,6 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따라서 pre-commit을 `--strict`로 올리면 (a) B-09의 실질 표면(Set 문자열 연결 미탐 시 부수 WARN 3건이 뜨므로 strict면 걸린다) (b) stale-pinned 드리프트 WARN이 기계 게이트에 걸린다.
 
-대가: 작업 중 `(리뷰 대기)` 행이 3건 넘게 쌓이면 커밋이 막힌다(현재 WARN 조건).
+대가: 작업 중 `(리뷰 대기)` 행이 3건 이상 쌓이면 커밋이 막힌다(현재 WARN 조건 — 실제 판정은 `> MAX_PENDING(2)`이므로 3건째부터 걸린다).
 
 소유자 결정 사항이며, 결정 전까지 기본 모드 유지.
