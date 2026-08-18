@@ -31,6 +31,7 @@
   3. **스폰 성공만으로 합격 처리하지 말 것** — transcript(`~/.claude/projects/<세션>/subagents/agent-*.meta.json`, 또는 세션 jsonl)에서 실제로 적용된 `model`이 그 tier의 frontmatter 값(예: haiku)과 일치하고 `effort`가 frontmatter 값(예: low)과 일치하는지 확인한다. 값 검증 없이는 "차단 안 됨 = 정확한 model/effort 적용"을 보장할 수 없다(훅은 값 자체를 검증하지 않는다 — B-11 참고).
   4. **사후 음성 재확인**: 양성 확인 후 다시 한번 범용 무model 호출을 시도해 차단이 여전히 살아 있는지 재확인(전파 과정에서 화이트리스트가 의도치 않게 넓어지지 않았는지).
 - **백업**: (a)(b)는 `docs/REINSTALL.md`가 정의한 절차 밖의 **ad-hoc 복사**다 — REINSTALL §1의 백업 스텝이 자동으로 커버하지 않으므로 별도 백업이 필수다. git 폴백도 존재한다: 구 전역 훅은 정본 레포 커밋 `568f89d`(PR#1, 최초 이관) 시점의 레포본과 byte-identical, 구 전역 규칙은 현재 `main`(이 PR #7 머지 전)과 동일 — 둘 다 필요시 `git show 568f89d:.claude/hooks/enforce-subagent-model.cjs` / `git show main:.claude/rules/subagent-model-routing.md`로 복원 가능하다.
+- **주의(REINSTALL §5 참고)**: 이 전파(①②) 이전의 구 전역 훅·규칙은 `~/.claude-backups/b08-20260818-085359/`에만 있다. REINSTALL §5가 안내하는 `ls -1dt "$HOME/.claude-backups/delegate-first-"* | head -1` 탐색 명령으로는 이 백업을 찾을 수 없다(이름 패턴이 다르다) — `delegate-first-*` 백업의 훅·규칙 사본은 이 전파 **이후**에 만들어졌다면 이미 정본판이라 전역 롤백 가치가 없다.
 
 ---
 
@@ -61,7 +62,7 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 **해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
 
-**end-to-end 실측 완료 (2026-08-18, B-08 전역 전파 후)**: 게이트가 요구한 4단계 판정 프로토콜 그대로 실측했다 — ①음성 대조(사전): `general-purpose`를 `model` 없이 실제 Agent 호출 → **차단**(exit 2 + 라우팅 안내) ②양성: `explorer-low`를 **`model` 파라미터 없이** 호출 → **스폰 성공**. transcript(`agent-a1d72d114318cfa6b.meta.json`)에 `model` 키 **부재**(생략 확인), jsonl의 실제 적용 모델 = **`claude-haiku-4-5-20251001`**(frontmatter 핀 그대로), 도구도 Read/Grep/Glob 제한 유지 ③양성 2: `executor-med`를 `model` 없이 호출 → 실제 모델 **`claude-sonnet-5`** + **`effort: "medium"`** — frontmatter의 model과 effort가 둘 다 적용됨을 transcript로 확인 ④음성 대조(사후): 다시 차단 확인. 관찰: `explorer-low` transcript에는 `effort` 키가 없음(haiku 4.5가 effort를 갖지 않는 모델 특성으로 추정 — 단정하지 않고 B-12에 관찰로 기록).
+**end-to-end 실측 완료 (2026-08-18, B-08 전역 전파 후)**: 게이트가 요구한 4단계 판정 프로토콜 그대로 실측했다 — ①음성 대조(사전): `general-purpose`를 `model` 없이 실제 Agent 호출 → **차단**(exit 2 + 라우팅 안내) ②양성: `explorer-low`를 **`model` 파라미터 없이** 호출 → **스폰 성공**. transcript(`agent-a1d72d114318cfa6b.meta.json`)에 `model` 키 **부재**(생략 확인), jsonl의 실제 적용 모델 = **`claude-haiku-4-5-20251001`**(frontmatter 핀 그대로), 도구도 Read/Grep/Glob 제한 유지 ③양성 2: `executor-med`를 `model` 없이 호출 → 실제 모델 **`claude-sonnet-5`** + **`effort: "medium"`** — frontmatter의 model과 effort가 둘 다 적용됨을 transcript로 확인 ④음성 대조(사후): 다시 차단 확인. **정직성 정정**: explorer-low leg(②)는 transcript에 `effort` 키 자체가 없어 "effort가 frontmatter 값과 일치하는지"를 그 leg만으로는 검증할 수 없었다 — model 일치만 확인 가능했다. effort 일치 확인은 ③의 executor-med leg(sonnet + `effort: "medium"` 확인)로 보완했다. 관찰: `explorer-low` transcript에는 `effort` 키가 없음(haiku 4.5가 effort를 갖지 않는 모델 특성으로 추정 — 단정하지 않고 B-12에 관찰로 기록).
 
 **해소 전 상태(이력)**: `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
 
@@ -202,3 +203,9 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 `docs/REINSTALL.md` §3의 copy-to-temp-then-swap 절차는 `$NEW`에 정본이 제공하는 파일(SKILL.md·references/)만 채운 뒤 기존 트리를 통째로 교체한다 — 이 성질상 정본에 없는 기존 파일(예: HANDOFF.md, NEW-REPO-PROMPT.md)은 스왑과 동시에 조용히 사라진다. 같은 절 바로 아래 문단은 "삭제는 이 절차에서 자동으로 하지 않는다"고 서술했지만, 절차 자체는 그 문단과 모순되게 두 파일을 실제로 지웠을 것이다. 2026-08-18 goone-rest 재설치 실행 중 이 결함이 발견됐고, 그 자리에서 두 파일을 `$NEW`로 승계하는 방식으로 교정해 실행했다(재설치 자체는 완료, goone-rest에 두 파일 보존 확인). 이번 PR은 §3 절차에 "정본이 제공하지 않는 기존 파일은 전부 승계"하는 단계를 명시해 문서와 실행을 일치시켰다.
 
 **후속 검토**: 이 절차는 스크립트가 아니라 사람이 복붙하는 bash 블록이라 린트 대상이 아니다 — 문서를 아무리 정확히 고쳐도 다음 실행자가 그대로 복붙하지 않으면 같은 사고가 재발할 수 있다. REINSTALL 절차를 `scripts/reinstall.sh`로 스크립트화해 승계·검증·롤백을 코드로 강제할지는 후속 검토 사항이다(트리거는 B-04와 동일 — 설치 대상이 3곳을 넘어갈 때 함께 판단).
+
+## B-14 — REINSTALL 롤백 블록의 조건부 복원 처리(수정됨) + 절차 스크립트화 재검토
+
+**상태**: 해결(이 PR)
+
+§5 롤백 블록 끝의 두 `cp ... 2>/dev/null` 줄은 `set -euo pipefail` 아래에서 소스가 백업에 없으면(전역 훅·규칙이 원래 없던 환경) `cp`가 non-zero로 실패해 스크립트를 exit 1로 죽였는데, 바로 아래 산문은 "조용히 아무것도 하지 않는다"고 서술해 문서와 동작이 모순이었다 — 하필 비상 경로(롤백)에서 실패로 끝나는 결함. `[ -f ... ] && cp ... || echo 스킵` 형태의 조건부 복원 + 출력으로 교정했다. B-13과 같은 뿌리다: 절차를 사람이 복붙하는 bash로 유지하는 한 `set -e` + 리다이렉트 + 선택적 소스의 조합 결함이 계속 재발할 수 있다.
