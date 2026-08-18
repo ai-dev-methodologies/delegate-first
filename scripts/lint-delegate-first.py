@@ -34,9 +34,24 @@ Check B (B-02): 위임 로그(기본 docs/handoff/delegation-log.md)의 마크�
 이 훅(enforce-subagent-model.cjs)과 달리 이 린터는 fs를 읽는 것이 목적이므로
 require/fs 금지 서약의 대상이 아니다 — 그 서약은 PreToolUse 훅 전용이다.
 
-종료 코드: FAIL 1건 이상 → 1. WARN만 있으면 0 (--strict 지정 시 1). INFO는
-알려진 예외를 "무시했다"는 사실을 보여주기 위한 표시일 뿐, 종료 코드에
-영향을 주지 않는다.
+Finding.level은 "FAIL"|"WARN"|"INFO" 화이트리스트로 검증한다 — 오타(예:
+"WARNING")로 이 밖의 값을 넘기면 main()의 집계(== "FAIL"/"WARN" 비교)에서
+조용히 빠져 exit 코드에 무음 미반영되므로, 생성자에서 즉시 ValueError로
+거부한다.
+
+B-10: WARN은 성격이 섞여 있어 두 클래스로 나눈다.
+  - drift(드리프트류): pinned↔agents 파일 존재 불일치, model은 있는데
+    effort가 없는 경우 등 — 방치하면 훅의 판정 기준 자체가 진짜와 어긋나는
+    결함이므로 게이트할 가치가 있다.
+  - workflow(워크플로류): 예) 위임 로그의 `(리뷰 대기)` 미마감 행이 임계
+    초과 — 이건 결함이 아니라 정상적인 진행 중 작업 상태다. 게이트로
+    승격하면 정상 작업이 커밋을 막게 된다.
+
+종료 코드: FAIL 1건 이상 → 1. WARN만 있으면 기본 0. `--strict` 지정 시,
+WARN 중 drift 클래스가 하나라도 있으면 1 — workflow 클래스는 `--strict`
+에서도 승격하지 않는다(출력에는 계속 보인다). INFO는 알려진 예외를
+"무시했다"는 사실을 보여주기 위한 표시일 뿐, 종료 코드에 영향을 주지
+않는다.
 """
 from __future__ import annotations
 
@@ -51,6 +66,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_AGENTS_DIR = REPO_ROOT / ".claude" / "agents"
 DEFAULT_HOOK_PATH = REPO_ROOT / ".claude" / "hooks" / "enforce-subagent-model.cjs"
 DEFAULT_LOG_PATH = REPO_ROOT / "docs" / "handoff" / "delegation-log.md"
+
+# Finding.level 화이트리스트 — main()의 집계(FAIL/WARN 카운트)는 이 세 값만
+# 인식한다. 오타(예: "WARNING")로 이 밖의 값을 만들면 집계에서 조용히
+# 빠져 exit 코드에 반영되지 않는다 — 생성자에서 즉시 거부한다.
+ALLOWED_LEVELS = ("FAIL", "WARN", "INFO")
 
 LOG_HEADER = ["날짜", "agent", "role", "model", "effort", "실행경로", "결과"]
 ALLOWED_EXEC_PATHS = {"Agent(tier)", "Agent(ad-hoc)", "Workflow agent()", "codex exec"}
@@ -90,15 +110,32 @@ def read_text_safe(path: Path) -> str:
 
 
 class Finding:
-    def __init__(self, level: str, path: Path, line: Optional[int], message: str):
+    def __init__(self, level: str, path: Path, line: Optional[int], message: str,
+                 kind: Optional[str] = None):
+        # level 오타(예: "WARNING")는 main()의 == "FAIL"/"WARN" 집계에서
+        # 조용히 빠져 exit 코드에 무음 미반영된다 — 즉시 거부한다.
+        if level not in ALLOWED_LEVELS:
+            raise ValueError(
+                f"Finding level은 {ALLOWED_LEVELS} 중 하나여야 함 (받은 값: {level!r}, "
+                f"message={message!r})")
         self.level = level  # "FAIL" | "WARN" | "INFO"
         self.path = path
         self.line = line
         self.message = message
+        # B-10: WARN 전용 클래스 분리. "drift"(드리프트류 — --strict가
+        # exit 1로 승격) | "workflow"(워크플로류 — 정상 작업 상태, 승격 안
+        # 함). FAIL/INFO는 클래스 개념이 없으므로 None으로 둔다. WARN인데
+        # kind가 없으면 분류 누락이므로 즉시 실패시킨다(조용히 승격 대상에서
+        # 빠지는 사고를 방지).
+        if level == "WARN" and kind not in ("drift", "workflow"):
+            raise ValueError(
+                f"WARN Finding은 kind='drift'|'workflow'가 필수다 (message={message!r})")
+        self.kind = kind
 
     def render(self) -> str:
         loc = f"{self.path}:{self.line}" if self.line is not None else str(self.path)
-        return f"[{self.level}] {loc} — {self.message}"
+        level_str = f"{self.level}:{self.kind}" if self.kind else self.level
+        return f"[{level_str}] {loc} — {self.message}"
 
 
 # ---------------------------------------------------------------------------
@@ -496,7 +533,8 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
                 "WARN", hook_path, line_no,
                 f"pinned 이름 '{name}'에 대응하는(frontmatter name 필드 일치) agents 파일이 "
                 f"{agents_dir}에 없음 (다른 프로젝트/전역 정의이거나, 위에서 name/stem "
-                f"불일치로 이미 FAIL 처리됐을 수 있음)"))
+                f"불일치로 이미 FAIL 처리됐을 수 있음)",
+                kind="drift"))
             continue
 
         agent_file, fm = entry
@@ -514,14 +552,16 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
         if model_entry is not None and effort_entry is None:
             findings.append(Finding(
                 "WARN", agent_file, model_entry[1],
-                f"'{name}' 정의에 model은 있으나 effort가 없음 — tier 계약상 둘 다 있어야 함"))
+                f"'{name}' 정의에 model은 있으나 effort가 없음 — tier 계약상 둘 다 있어야 함",
+                kind="drift"))
 
     for name_val, (agent_file, _fm) in name_index.items():
         if name_val not in pinned_names_seen:
             findings.append(Finding(
                 "WARN", agent_file, None,
                 f"'{name_val}'이 agents/에 있지만 훅 pinned 목록엔 없음 "
-                f"(fail-closed라 안전하지만 의도된 것인지 확인 필요)"))
+                f"(fail-closed라 안전하지만 의도된 것인지 확인 필요)",
+                kind="drift"))
 
     # -----------------------------------------------------------------
     # B-11 + B-09: TIER_EXPECTED_MODEL map ↔ MODEL_PINNED_TYPES Set ↔
@@ -803,7 +843,12 @@ def check_b(log_path: Path) -> list:
                 f"전체가 스캔에서 누락됐을 수 있음): {stripped!r}"))
 
     if not all_data_rows:
-        findings.append(Finding("WARN", log_path, None, "데이터 행이 0건 — 빈 로그"))
+        # kind="workflow": 구조적 결함이 아니라 부트스트랩 상태다 — 갓 설치한
+        # 프로젝트는 위임을 한 번도 기록하기 전이라 데이터 행이 0건인 게
+        # 정상이며, drift로 분류하면 --strict에서 신규 설치가 첫 커밋부터
+        # 자기 게이트에 막힌다(B-10이 막으려던 범주 오류의 재현).
+        findings.append(Finding("WARN", log_path, None, "데이터 행이 0건 — 빈 로그",
+                                 kind="workflow"))
         return findings
 
     pending_lines = []
@@ -839,7 +884,9 @@ def check_b(log_path: Path) -> list:
         findings.append(Finding(
             "WARN", log_path, None,
             f"'{PENDING_MARKER}'로 남은 행이 {len(pending_lines)}개 (>{MAX_PENDING}) — "
-            f"라인 {pending_lines} — 오래 열린 위임이 쌓이고 있음"))
+            f"라인 {pending_lines} — 오래 열린 위임이 쌓이고 있음(정상 진행 중 작업 "
+            f"상태 — --strict에서도 게이트로 승격되지 않음)",
+            kind="workflow"))
 
     return findings
 
@@ -860,7 +907,11 @@ def main() -> int:
     parser.add_argument("--log-path", type=Path, default=DEFAULT_LOG_PATH,
                          help=f"위임 로그 경로 (기본: {DEFAULT_LOG_PATH}) — 프로젝트 파라미터")
     parser.add_argument("--strict", action="store_true",
-                         help="WARN이 하나라도 있으면 종료 코드 1")
+                         help="WARN 중 drift 클래스(pinned↔agents 파일 불일치, model은 "
+                              "있는데 effort 없음 등)가 하나라도 있으면 종료 코드 1. "
+                              "workflow 클래스(예: 위임 로그 '(리뷰 대기)' 미마감 행 임계 "
+                              "초과)는 정상 작업 상태로 보고 승격하지 않음 — 출력에는 "
+                              "계속 표시됨")
     args = parser.parse_args()
 
     findings_a = check_a(args.agents_dir, args.hook_path)
@@ -884,19 +935,24 @@ def main() -> int:
     all_findings = findings_a + findings_b
     fail_count = sum(1 for f in all_findings if f.level == "FAIL")
     warn_count = sum(1 for f in all_findings if f.level == "WARN")
+    # B-10: WARN을 drift(게이트 가치 있음, --strict가 승격)와 workflow(정상
+    # 작업 상태, 승격 안 함)로 나눠 센다.
+    warn_drift_count = sum(1 for f in all_findings if f.level == "WARN" and f.kind == "drift")
+    warn_workflow_count = sum(1 for f in all_findings if f.level == "WARN" and f.kind == "workflow")
 
     print()
     if fail_count:
-        status = f"FAIL {fail_count} (WARN {warn_count})"
+        status = (f"FAIL {fail_count} (WARN {warn_count}: drift {warn_drift_count} / "
+                   f"workflow {warn_workflow_count})")
     elif warn_count:
-        status = f"WARN {warn_count}"
+        status = f"WARN {warn_count} (drift {warn_drift_count} / workflow {warn_workflow_count})"
     else:
         status = "PASS"
     print(f"=== Summary: {status} ===")
 
     if fail_count:
         return 1
-    if warn_count and args.strict:
+    if warn_drift_count and args.strict:
         return 1
     return 0
 

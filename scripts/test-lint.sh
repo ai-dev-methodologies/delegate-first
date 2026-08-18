@@ -66,6 +66,53 @@ run_and_check() {
   fi
 }
 
+# run_dual <설명> <기본 모드 기대 exit> <--strict 기대 exit> [출력에 있어야 할 grep -E 패턴]
+# B-10: 기본 모드와 --strict 모드를 각각 실행해 둘 다 기대 exit code인지
+# 확인한다. grep 패턴이 주어지면 기본 모드 출력에 그 패턴(예: 클래스 태그
+# [WARN:drift]/[WARN:workflow])이 실제로 나타나는지도 함께 확인한다.
+run_dual() {
+  desc="$1"
+  expected_default="$2"
+  expected_strict="$3"
+  grep_pattern="${4:-}"
+
+  actual_default=$(python3 "$LINT_SCRIPT" \
+    --agents-dir "$CASE_DIR/agents" \
+    --hook-path "$CASE_DIR/hook.cjs" \
+    --log-path "$CASE_DIR/log.md" \
+    >"$CASE_DIR/out_default.txt" 2>&1; echo $?)
+
+  actual_strict=$(python3 "$LINT_SCRIPT" \
+    --agents-dir "$CASE_DIR/agents" \
+    --hook-path "$CASE_DIR/hook.cjs" \
+    --log-path "$CASE_DIR/log.md" \
+    --strict \
+    >"$CASE_DIR/out_strict.txt" 2>&1; echo $?)
+
+  ok=1
+  reason=""
+  if [ "$actual_default" != "$expected_default" ]; then
+    ok=0
+    reason="${reason} 기본 exit ${expected_default} 기대, 실제 ${actual_default}."
+  fi
+  if [ "$actual_strict" != "$expected_strict" ]; then
+    ok=0
+    reason="${reason} strict exit ${expected_strict} 기대, 실제 ${actual_strict}."
+  fi
+  if [ -n "$grep_pattern" ] && ! grep -E -q -- "$grep_pattern" "$CASE_DIR/out_default.txt"; then
+    ok=0
+    reason="${reason} 기본 출력에 패턴 '${grep_pattern}' 없음."
+  fi
+
+  if [ "$ok" -eq 1 ]; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+  else
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - ${desc} (${reason} 출력: ${CASE_DIR}/out_default.txt / ${CASE_DIR}/out_strict.txt)"
+  fi
+}
+
 # ===========================================================================
 # 양성 케이스 (FAIL을 기대 — 종료코드 1)
 # ===========================================================================
@@ -399,6 +446,254 @@ t = t.replace('\n};\n', '\n}\n', 1)
 open(p, 'w', encoding='utf-8').write(t)
 "
 run_and_check "C7: 훅 세미콜론 없는(semi:false) 종결자 스타일 (PASS 기대)" 0
+
+# ===========================================================================
+# B-10: WARN 클래스 분리(drift/workflow) + --strict 승격 회귀
+# ===========================================================================
+
+# B10-a. 워크플로류: '(리뷰 대기)' 미마감 행이 임계(MAX_PENDING=2) 초과 —
+# 결함이 아니라 정상 진행 중 작업 상태이므로 기본·--strict 모두 exit 0이어야
+# 하고, 출력엔 [WARN:workflow]로 표시돼 사람이 볼 수는 있어야 한다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+with open(p, 'a', encoding='utf-8') as f:
+    for i in range(1, 4):
+        f.write('| 2026-08-19 | executor-high | B-10 워크플로류 회귀 대기 행 ' + str(i) +
+                 ' | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |\n')
+"
+CASE_B10A_DIR="$CASE_DIR"
+run_dual "B10-a: '(리뷰 대기)' 임계 초과 (워크플로류, 기본 0 / strict 0 기대)" 0 0 '\[WARN:workflow\]'
+
+# B10-b. 드리프트류: agents/에 새 tier md 파일을 추가했지만 훅
+# MODEL_PINNED_TYPES Set엔 없는 상태 — model/effort는 정상이라 다른
+# FAIL/WARN을 유발하지 않고 이 드리프트 하나만 격리해서 확인한다. 기본은
+# WARN(exit 0), --strict는 drift라서 exit 1이어야 한다.
+new_case
+python3 -c "
+p_src = '$CASE_DIR/agents/executor-high.md'
+p_dst = '$CASE_DIR/agents/executor-high-newtier.md'
+t = open(p_src, encoding='utf-8').read().replace('name: executor-high', 'name: executor-high-newtier', 1)
+open(p_dst, 'w', encoding='utf-8').write(t)
+"
+run_dual "B10-b: agents/에 있지만 훅 pinned Set엔 없는 tier (드리프트류, 기본 0 / strict 1 기대)" 0 1 '\[WARN:drift\]'
+
+# B10-c. 현재 레포 상태(무변형 사본) — 기본·--strict 둘 다 exit 0이어야 한다.
+new_case
+run_dual "B10-c: 무변형 사본 (기본 0 / strict 0 기대)" 0 0
+
+# B10-d. 워크플로류: 데이터 행이 0건인 로그(부트스트랩 상태 — 헤더까지는
+# 있지만 아직 위임을 한 번도 기록하지 않은 신규 설치). 결함이 아니라 정상
+# 작업 상태이므로 기본·--strict 모두 exit 0이어야 하고, 출력엔
+# [WARN:workflow]로 표시돼야 한다(수정 전엔 kind="drift"라서 --strict가
+# exit 1을 냈다 — 아래 비공허성 확인에서 그 되돌림을 재현한다).
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+lines = open(p, encoding='utf-8').read().splitlines(keepends=True)
+header_idx = next(i for i, l in enumerate(lines) if l.strip().startswith('| 날짜'))
+# 헤더 다음 구분선 줄(|---|...)까지 남겨야 Check B가 '구분선 없음' FAIL을
+# 내지 않는다 — 데이터 행 0건만 격리해서 확인하려는 케이스이므로 구분선
+# 형식 자체는 정상으로 둔다.
+sep_idx = header_idx + 1
+assert lines[sep_idx].strip().startswith('|---'), 'fixture: 헤더 다음 줄이 구분선이 아님'
+open(p, 'w', encoding='utf-8').writelines(lines[:sep_idx + 1])
+"
+CASE_B10D_DIR="$CASE_DIR"
+run_dual "B10-d: 데이터 행 0건(부트스트랩, 워크플로류) (기본 0 / strict 0 기대)" 0 0 '\[WARN:workflow\]'
+
+# B10-e. 동시 발생: 드리프트류(신규 tier 미pinned)와 워크플로류('(리뷰 대기)'
+# 임계 초과)가 한 픽스처에 함께 있을 때 — 기본 0 / strict 1이어야 하고,
+# 출력에 [WARN:drift]와 [WARN:workflow]가 둘 다 병기돼야 한다.
+new_case
+python3 -c "
+p_src = '$CASE_DIR/agents/executor-high.md'
+p_dst = '$CASE_DIR/agents/executor-high-newtier.md'
+t = open(p_src, encoding='utf-8').read().replace('name: executor-high', 'name: executor-high-newtier', 1)
+open(p_dst, 'w', encoding='utf-8').write(t)
+"
+python3 -c "
+p = '$CASE_DIR/log.md'
+with open(p, 'a', encoding='utf-8') as f:
+    for i in range(1, 4):
+        f.write('| 2026-08-19 | executor-high | B-10e 동시발생 대기 행 ' + str(i) +
+                 ' | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |\n')
+"
+actual_default=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" \
+  >"$CASE_DIR/out_default.txt" 2>&1; echo $?)
+actual_strict=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" --strict \
+  >"$CASE_DIR/out_strict.txt" 2>&1; echo $?)
+ok=1
+reason=""
+if [ "$actual_default" != "0" ]; then ok=0; reason="${reason} 기본 exit 0 기대, 실제 ${actual_default}."; fi
+if [ "$actual_strict" != "1" ]; then ok=0; reason="${reason} strict exit 1 기대, 실제 ${actual_strict}."; fi
+if ! grep -q '\[WARN:drift\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 출력에 [WARN:drift] 없음."; fi
+if ! grep -q '\[WARN:workflow\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 출력에 [WARN:workflow] 없음."; fi
+if [ "$ok" -eq 1 ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B10-e: 드리프트+워크플로 동시 발생 (${reason} 출력: ${CASE_DIR}/out_default.txt / ${CASE_DIR}/out_strict.txt)"
+fi
+
+# B10-f. 경계값: '(리뷰 대기)' 행이 정확히 임계값(MAX_PENDING=2)만큼일 때 —
+# 조건이 '개수 > MAX_PENDING'이므로 이 경계에서는 워크플로류 WARN 자체가
+# 없어야 한다(경계 확인, off-by-one 회귀 방지). 베이스라인 로그에 이미
+# '(리뷰 대기)' 행이 있을 수 있으므로, 먼저 기존 행을 중립화(완료 처리)해
+# 0건으로 만든 뒤 정확히 2건만 추가한다 — 그래야 "정확히 임계값"이 보장된다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+t = open(p, encoding='utf-8').read().replace('(리뷰 대기)', '완료(베이스라인 중립화)')
+with open(p, 'w', encoding='utf-8') as f:
+    f.write(t)
+    for i in range(1, 3):
+        f.write('| 2026-08-19 | executor-high | B-10f 경계값 대기 행 ' + str(i) +
+                 ' | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |\n')
+"
+actual_default=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" \
+  >"$CASE_DIR/out_default.txt" 2>&1; echo $?)
+ok=1
+reason=""
+if [ "$actual_default" != "0" ]; then ok=0; reason="${reason} 기본 exit 0 기대, 실제 ${actual_default}."; fi
+if grep -q '\[WARN:workflow\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 대기 행이 정확히 임계값(2)인데 [WARN:workflow]가 출력됨(경계 off-by-one 의심)."; fi
+if [ "$ok" -eq 1 ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B10-f: 대기 행 정확히 임계값(2) (${reason} 출력: ${CASE_DIR}/out_default.txt)"
+fi
+
+# ---------------------------------------------------------------------------
+# Finding 생성자 불변식 직접 검증 — CLI 경로가 아니라 모듈을 직접 import해
+# 생성자 호출로 확인한다(스크래치 사본에 주입하는 방식의 변형).
+#   (1) level 오타(화이트리스트 밖 값)는 ValueError여야 한다(신규 검증).
+#   (2) WARN인데 kind가 없으면 ValueError여야 한다(기존 불변식 회귀 확인).
+# ---------------------------------------------------------------------------
+INVARIANT_CHECK=$(python3 -c "
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('lint_mod', '$LINT_SCRIPT')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+results = []
+
+try:
+    mod.Finding('WARNING', Path('x'), None, 'typo level test')
+    results.append('LEVEL_TYPO:NO_RAISE')
+except ValueError:
+    results.append('LEVEL_TYPO:RAISED')
+except Exception as e:
+    results.append('LEVEL_TYPO:WRONG_EXC:' + type(e).__name__)
+
+try:
+    mod.Finding('WARN', Path('x'), None, 'kind-less WARN test')
+    results.append('KINDLESS_WARN:NO_RAISE')
+except ValueError:
+    results.append('KINDLESS_WARN:RAISED')
+except Exception as e:
+    results.append('KINDLESS_WARN:WRONG_EXC:' + type(e).__name__)
+
+print(','.join(results))
+")
+echo
+echo "=== Finding 생성자 불변식 확인 (level 화이트리스트 + WARN kind 필수) ==="
+echo "결과: $INVARIANT_CHECK (기대: LEVEL_TYPO:RAISED,KINDLESS_WARN:RAISED)"
+if [ "$INVARIANT_CHECK" = "LEVEL_TYPO:RAISED,KINDLESS_WARN:RAISED" ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - Finding 생성자 불변식(level 화이트리스트 + WARN kind 필수) 검증 실패 (결과: ${INVARIANT_CHECK})"
+fi
+
+# ---------------------------------------------------------------------------
+# 비공허성: B10-d에서 되돌린 kind만 표적 복구한 사본(정정 전 상태 —
+# 데이터 행 0건 Finding을 kind="drift"로 되돌림)에서 B10-d 픽스처를 다시
+# 돌려, --strict가 exit 1로 뒤집히는지 확인한다. 뒤집히지 않으면(계속
+# exit 0) B10-d가 이 정정과 무관하게 통과하는 공허한 테스트라는 뜻이므로
+# 여기서 실패로 표시한다.
+# ---------------------------------------------------------------------------
+REVERTED_SCRIPT_B10D="$SCRATCH/lint_reverted_b10d.py"
+python3 -c "
+p_in = '$LINT_SCRIPT'
+p_out = '$REVERTED_SCRIPT_B10D'
+t = open(p_in, encoding='utf-8').read()
+needle = '데이터 행이 0건 — 빈 로그\",\n                                 kind=\"workflow\"))'
+assert t.count(needle) == 1, 'fixture: B10-d 되돌리기 대상 문자열이 정확히 1개가 아님 — 코드가 바뀌었을 수 있음'
+t = t.replace(needle, '데이터 행이 0건 — 빈 로그\",\n                                 kind=\"drift\"))', 1)
+open(p_out, 'w', encoding='utf-8').write(t)
+"
+
+if diff -q "$LINT_SCRIPT" "$REVERTED_SCRIPT_B10D" >/dev/null 2>&1; then
+  REVERT_B10D_APPLIED=0
+else
+  REVERT_B10D_APPLIED=1
+fi
+
+NONVAC_B10D_EXIT=$(python3 "$REVERTED_SCRIPT_B10D" \
+  --agents-dir "$CASE_B10D_DIR/agents" \
+  --hook-path "$CASE_B10D_DIR/hook.cjs" \
+  --log-path "$CASE_B10D_DIR/log.md" \
+  --strict \
+  >"$SCRATCH/nonvac_b10d_out.txt" 2>&1; echo $?)
+
+echo
+echo "=== B-10 비공허성 확인 (B10-d, kind만 drift로 되돌린 사본) ==="
+echo "reverted script 실제로 원본과 다름: $([ "$REVERT_B10D_APPLIED" -eq 1 ] && echo yes || echo no)"
+echo "B10-d 픽스처, 되돌린 스크립트, --strict → exit ${NONVAC_B10D_EXIT} (기대: 1 / 정정된 스크립트는 0이었음)"
+if [ "$REVERT_B10D_APPLIED" -eq 1 ] && [ "$NONVAC_B10D_EXIT" = "1" ]; then
+  echo "NON-VACUOUS: PASS (되돌리면 실제로 exit 1로 뒤집힘 — B-10 정정이 진짜 동작 중)"
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  echo "NON-VACUOUS: FAIL (되돌려도 결과가 안 바뀜 — B10-d 테스트가 공허할 수 있음)"
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B-10(빈 로그) 비공허성 확인 실패 (revert_applied=${REVERT_B10D_APPLIED}, exit=${NONVAC_B10D_EXIT}, 출력: ${SCRATCH}/nonvac_b10d_out.txt)"
+fi
+
+# ---------------------------------------------------------------------------
+# 비공허성: 클래스 분리를 되돌린 사본(--strict 승격 조건을 warn_drift_count
+# 대신 warn_count로 되돌린 버전)에서 B10-a 픽스처를 다시 돌려, strict 모드가
+# 워크플로류까지 승격해 exit 1로 뒤집히는지 확인한다. 뒤집히지 않으면(계속
+# exit 0) B10-a가 애초에 분리 여부와 무관하게 통과하는 공허한 테스트라는
+# 뜻이므로, 여기서 실패로 표시한다.
+# ---------------------------------------------------------------------------
+REVERTED_SCRIPT="$SCRATCH/lint_reverted.py"
+sed 's/if warn_drift_count and args.strict:/if warn_count and args.strict:/' "$LINT_SCRIPT" > "$REVERTED_SCRIPT"
+
+if diff -q "$LINT_SCRIPT" "$REVERTED_SCRIPT" >/dev/null 2>&1; then
+  REVERT_APPLIED=0
+else
+  REVERT_APPLIED=1
+fi
+
+NONVAC_EXIT=$(python3 "$REVERTED_SCRIPT" \
+  --agents-dir "$CASE_B10A_DIR/agents" \
+  --hook-path "$CASE_B10A_DIR/hook.cjs" \
+  --log-path "$CASE_B10A_DIR/log.md" \
+  --strict \
+  >"$SCRATCH/nonvac_out.txt" 2>&1; echo $?)
+
+echo
+echo "=== B-10 비공허성 확인 (클래스 분리를 되돌린 사본) ==="
+echo "reverted script 실제로 원본과 다름: $([ "$REVERT_APPLIED" -eq 1 ] && echo yes || echo no)"
+echo "B10-a 픽스처, 되돌린 스크립트, --strict → exit ${NONVAC_EXIT} (기대: 1 / 원본 스크립트는 0이었음)"
+if [ "$REVERT_APPLIED" -eq 1 ] && [ "$NONVAC_EXIT" = "1" ]; then
+  echo "NON-VACUOUS: PASS (되돌리면 실제로 exit 1로 뒤집힘 — 클래스 분리가 진짜 동작 중)"
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  echo "NON-VACUOUS: FAIL (되돌려도 결과가 안 바뀜 — B10-a 테스트가 공허할 수 있음)"
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B-10 비공허성 확인 실패 (revert_applied=${REVERT_APPLIED}, exit=${NONVAC_EXIT}, 출력: ${SCRATCH}/nonvac_out.txt)"
+fi
 
 # ===========================================================================
 # 결과 집계

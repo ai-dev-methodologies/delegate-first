@@ -14,8 +14,11 @@ set -u
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." && pwd))"
 
-echo "[pre-commit] scripts/lint-delegate-first.py 실행..."
-python3 "$REPO_ROOT/scripts/lint-delegate-first.py"
+echo "[pre-commit] scripts/lint-delegate-first.py --strict 실행..."
+# B-10: --strict는 드리프트류 WARN(pinned↔agents 불일치, model 있는데 effort
+# 없음 등)만 커밋을 막고, 위임 로그의 '(리뷰 대기)' 미마감 같은 워크플로류
+# WARN은 정상 진행 중 작업 상태라 막지 않는다(출력에는 계속 보인다).
+python3 "$REPO_ROOT/scripts/lint-delegate-first.py" --strict
 LINT_STATUS=$?
 
 echo "[pre-commit] scripts/test-lint.sh 실행(린터 자체 회귀망, 실측 ~1초)..."

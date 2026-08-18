@@ -136,12 +136,12 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 ## scripts/
 
-- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
-- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 22건 + 음성(PASS 기대) 4건, 실측 ~1초.
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1. WARN은 **B-10부터 두 클래스로 나뉜다** — `drift`(pinned↔agents 파일 불일치, model은 있는데 effort가 없음 등: 방치하면 훅 판정 기준 자체가 어긋나는 결함)와 `workflow`(예: 위임 로그의 `(리뷰 대기)` 미마감 행이 임계 초과 — 결함이 아니라 정상 진행 중 작업 상태). 기본 모드는 WARN이 있어도 exit 0. `--strict`는 **drift 클래스 WARN만 exit 1로 승격**하고 workflow 클래스는 승격하지 않는다(출력에는 `[WARN:drift]`/`[WARN:workflow]`로 계속 보인다). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
+- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 22건 + 음성(PASS 기대) 5건 + B-10 클래스 분리 회귀(기본/`--strict` 이중 확인, 동시발생·경계값 케이스 포함) 6건 + Finding 생성자 불변식 확인(level 화이트리스트·WARN kind 필수) 1건 + B-10 비공허성 확인 2건 = 36건(실측, 이전에 적혀 있던 31건은 실제 스위트와 어긋난 수치였다), 실측 ~1초.
 - `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
 - `bash scripts/reinstall.sh [--dry-run]` — [docs/REINSTALL.md](docs/REINSTALL.md) §3 절차(정본 → 프로젝트 로컬 재설치)를 실행하는 스크립트. **파괴적**(대상 프로젝트 트리를 교체)이므로 실행 전 `--dry-run`으로 먼저 확인할 것. 전역(`~/.claude/`) 전파는 기본 비활성 — 별도 단계로 명시 실행해야 한다.
 - `bash scripts/test-reinstall.sh` — `reinstall.sh`의 회귀 테스트(스크래치 사본에서 실행, 부작용 없음).
-- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 린터·린터 회귀망·훅 스모크가 자동 실행된다(자동 설치되지 않음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 린터(`--strict`) · 린터 회귀망 · 훅 스모크가 자동 실행된다(자동 설치되지 않음). B-10부터 pre-commit의 린터 호출이 `--strict`로 승격됐다 — 드리프트류 WARN은 커밋을 막고, `(리뷰 대기)` 같은 워크플로류 WARN은 막지 않는다. **워킹트리 기준 상호작용 고지**: 이 검사는 스테이지된 인덱스가 아니라 **워킹 트리**를 대상으로 한다(`.githooks/pre-commit` 주석 참고) — `--strict` 승격으로 드리프트류 WARN이 게이트가 됐으므로, 워킹 트리에 미완성 드리프트(예: agents 파일만 고치고 훅 pinned 목록은 아직 안 고친 상태)가 있으면 **그와 무관한 별개 커밋**까지 막힐 수 있다. 대응: 완성 전이면 `git stash`로 미완성 변경을 잠시 치우고 커밋하거나, 삼각형(에이전트 파일 + 훅 pinned 목록 + 기대값 map)을 한 커밋에 완결시켜 드리프트 창을 없앤다.
 
 ## 원칙 요약
 
