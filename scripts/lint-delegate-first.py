@@ -34,6 +34,11 @@ Check B (B-02): 위임 로그(기본 docs/handoff/delegation-log.md)의 마크�
 이 훅(enforce-subagent-model.cjs)과 달리 이 린터는 fs를 읽는 것이 목적이므로
 require/fs 금지 서약의 대상이 아니다 — 그 서약은 PreToolUse 훅 전용이다.
 
+Finding.level은 "FAIL"|"WARN"|"INFO" 화이트리스트로 검증한다 — 오타(예:
+"WARNING")로 이 밖의 값을 넘기면 main()의 집계(== "FAIL"/"WARN" 비교)에서
+조용히 빠져 exit 코드에 무음 미반영되므로, 생성자에서 즉시 ValueError로
+거부한다.
+
 B-10: WARN은 성격이 섞여 있어 두 클래스로 나눈다.
   - drift(드리프트류): pinned↔agents 파일 존재 불일치, model은 있는데
     effort가 없는 경우 등 — 방치하면 훅의 판정 기준 자체가 진짜와 어긋나는
@@ -61,6 +66,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_AGENTS_DIR = REPO_ROOT / ".claude" / "agents"
 DEFAULT_HOOK_PATH = REPO_ROOT / ".claude" / "hooks" / "enforce-subagent-model.cjs"
 DEFAULT_LOG_PATH = REPO_ROOT / "docs" / "handoff" / "delegation-log.md"
+
+# Finding.level 화이트리스트 — main()의 집계(FAIL/WARN 카운트)는 이 세 값만
+# 인식한다. 오타(예: "WARNING")로 이 밖의 값을 만들면 집계에서 조용히
+# 빠져 exit 코드에 반영되지 않는다 — 생성자에서 즉시 거부한다.
+ALLOWED_LEVELS = ("FAIL", "WARN", "INFO")
 
 LOG_HEADER = ["날짜", "agent", "role", "model", "effort", "실행경로", "결과"]
 ALLOWED_EXEC_PATHS = {"Agent(tier)", "Agent(ad-hoc)", "Workflow agent()", "codex exec"}
@@ -102,6 +112,12 @@ def read_text_safe(path: Path) -> str:
 class Finding:
     def __init__(self, level: str, path: Path, line: Optional[int], message: str,
                  kind: Optional[str] = None):
+        # level 오타(예: "WARNING")는 main()의 == "FAIL"/"WARN" 집계에서
+        # 조용히 빠져 exit 코드에 무음 미반영된다 — 즉시 거부한다.
+        if level not in ALLOWED_LEVELS:
+            raise ValueError(
+                f"Finding level은 {ALLOWED_LEVELS} 중 하나여야 함 (받은 값: {level!r}, "
+                f"message={message!r})")
         self.level = level  # "FAIL" | "WARN" | "INFO"
         self.path = path
         self.line = line

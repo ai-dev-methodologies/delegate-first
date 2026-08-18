@@ -502,6 +502,117 @@ open(p, 'w', encoding='utf-8').writelines(lines[:sep_idx + 1])
 CASE_B10D_DIR="$CASE_DIR"
 run_dual "B10-d: 데이터 행 0건(부트스트랩, 워크플로류) (기본 0 / strict 0 기대)" 0 0 '\[WARN:workflow\]'
 
+# B10-e. 동시 발생: 드리프트류(신규 tier 미pinned)와 워크플로류('(리뷰 대기)'
+# 임계 초과)가 한 픽스처에 함께 있을 때 — 기본 0 / strict 1이어야 하고,
+# 출력에 [WARN:drift]와 [WARN:workflow]가 둘 다 병기돼야 한다.
+new_case
+python3 -c "
+p_src = '$CASE_DIR/agents/executor-high.md'
+p_dst = '$CASE_DIR/agents/executor-high-newtier.md'
+t = open(p_src, encoding='utf-8').read().replace('name: executor-high', 'name: executor-high-newtier', 1)
+open(p_dst, 'w', encoding='utf-8').write(t)
+"
+python3 -c "
+p = '$CASE_DIR/log.md'
+with open(p, 'a', encoding='utf-8') as f:
+    for i in range(1, 4):
+        f.write('| 2026-08-19 | executor-high | B-10e 동시발생 대기 행 ' + str(i) +
+                 ' | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |\n')
+"
+actual_default=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" \
+  >"$CASE_DIR/out_default.txt" 2>&1; echo $?)
+actual_strict=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" --strict \
+  >"$CASE_DIR/out_strict.txt" 2>&1; echo $?)
+ok=1
+reason=""
+if [ "$actual_default" != "0" ]; then ok=0; reason="${reason} 기본 exit 0 기대, 실제 ${actual_default}."; fi
+if [ "$actual_strict" != "1" ]; then ok=0; reason="${reason} strict exit 1 기대, 실제 ${actual_strict}."; fi
+if ! grep -q '\[WARN:drift\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 출력에 [WARN:drift] 없음."; fi
+if ! grep -q '\[WARN:workflow\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 출력에 [WARN:workflow] 없음."; fi
+if [ "$ok" -eq 1 ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B10-e: 드리프트+워크플로 동시 발생 (${reason} 출력: ${CASE_DIR}/out_default.txt / ${CASE_DIR}/out_strict.txt)"
+fi
+
+# B10-f. 경계값: '(리뷰 대기)' 행이 정확히 임계값(MAX_PENDING=2)만큼일 때 —
+# 조건이 '개수 > MAX_PENDING'이므로 이 경계에서는 워크플로류 WARN 자체가
+# 없어야 한다(경계 확인, off-by-one 회귀 방지). 베이스라인 로그에 이미
+# '(리뷰 대기)' 행이 있을 수 있으므로, 먼저 기존 행을 중립화(완료 처리)해
+# 0건으로 만든 뒤 정확히 2건만 추가한다 — 그래야 "정확히 임계값"이 보장된다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+t = open(p, encoding='utf-8').read().replace('(리뷰 대기)', '완료(베이스라인 중립화)')
+with open(p, 'w', encoding='utf-8') as f:
+    f.write(t)
+    for i in range(1, 3):
+        f.write('| 2026-08-19 | executor-high | B-10f 경계값 대기 행 ' + str(i) +
+                 ' | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |\n')
+"
+actual_default=$(python3 "$LINT_SCRIPT" \
+  --agents-dir "$CASE_DIR/agents" --hook-path "$CASE_DIR/hook.cjs" --log-path "$CASE_DIR/log.md" \
+  >"$CASE_DIR/out_default.txt" 2>&1; echo $?)
+ok=1
+reason=""
+if [ "$actual_default" != "0" ]; then ok=0; reason="${reason} 기본 exit 0 기대, 실제 ${actual_default}."; fi
+if grep -q '\[WARN:workflow\]' "$CASE_DIR/out_default.txt"; then ok=0; reason="${reason} 대기 행이 정확히 임계값(2)인데 [WARN:workflow]가 출력됨(경계 off-by-one 의심)."; fi
+if [ "$ok" -eq 1 ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - B10-f: 대기 행 정확히 임계값(2) (${reason} 출력: ${CASE_DIR}/out_default.txt)"
+fi
+
+# ---------------------------------------------------------------------------
+# Finding 생성자 불변식 직접 검증 — CLI 경로가 아니라 모듈을 직접 import해
+# 생성자 호출로 확인한다(스크래치 사본에 주입하는 방식의 변형).
+#   (1) level 오타(화이트리스트 밖 값)는 ValueError여야 한다(신규 검증).
+#   (2) WARN인데 kind가 없으면 ValueError여야 한다(기존 불변식 회귀 확인).
+# ---------------------------------------------------------------------------
+INVARIANT_CHECK=$(python3 -c "
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('lint_mod', '$LINT_SCRIPT')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+results = []
+
+try:
+    mod.Finding('WARNING', Path('x'), None, 'typo level test')
+    results.append('LEVEL_TYPO:NO_RAISE')
+except ValueError:
+    results.append('LEVEL_TYPO:RAISED')
+except Exception as e:
+    results.append('LEVEL_TYPO:WRONG_EXC:' + type(e).__name__)
+
+try:
+    mod.Finding('WARN', Path('x'), None, 'kind-less WARN test')
+    results.append('KINDLESS_WARN:NO_RAISE')
+except ValueError:
+    results.append('KINDLESS_WARN:RAISED')
+except Exception as e:
+    results.append('KINDLESS_WARN:WRONG_EXC:' + type(e).__name__)
+
+print(','.join(results))
+")
+echo
+echo "=== Finding 생성자 불변식 확인 (level 화이트리스트 + WARN kind 필수) ==="
+echo "결과: $INVARIANT_CHECK (기대: LEVEL_TYPO:RAISED,KINDLESS_WARN:RAISED)"
+if [ "$INVARIANT_CHECK" = "LEVEL_TYPO:RAISED,KINDLESS_WARN:RAISED" ]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - Finding 생성자 불변식(level 화이트리스트 + WARN kind 필수) 검증 실패 (결과: ${INVARIANT_CHECK})"
+fi
+
 # ---------------------------------------------------------------------------
 # 비공허성: B10-d에서 되돌린 kind만 표적 복구한 사본(정정 전 상태 —
 # 데이터 행 0건 Finding을 kind="drift"로 되돌림)에서 B10-d 픽스처를 다시
