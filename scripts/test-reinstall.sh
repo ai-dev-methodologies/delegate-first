@@ -500,6 +500,62 @@ echo
   if [ "$ok" -eq 1 ]; then record "case17_backup_dir_collision_refused" PASS; else record "case17_backup_dir_collision_refused" FAIL "$detail"; fi
 }
 
+# --- Case 18 (F-4 scratch-path coverage): --rollback dir inside the .new
+# swap-scratch path is refused, not just inside the live skill dir itself.
+# do_rollback's own "잔여 .new/.old 정리" step (rm -rf on .new and .old)
+# runs BEFORE the live-dir restore — a backup planted under .new would be
+# eaten by that earlier rm -rf even though it sits outside the live dir,
+# so the F-4 guard must check .new/.old too, not just the live dir. ---
+{
+  d="$(case_dir case18)"
+  build_basic_dst "$d/dst"
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak_outside="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak_outside" ] || { ok=0; detail="no backup dir found after install"; }
+  if [ "$ok" -eq 1 ]; then
+    inside_new="$d/dst/.claude/skills/delegate-first.new/nested-backup"
+    mkdir -p "$inside_new"
+    cp -R "$bak_outside/." "$inside_new/"
+    before_live="$(checksum_tree "$d/dst/.claude/skills/delegate-first")"
+    before_new="$(checksum_tree "$d/dst/.claude/skills/delegate-first.new")"
+    out="$(run_reinstall "$d/home" --rollback "$inside_new" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    after_live="$(checksum_tree "$d/dst/.claude/skills/delegate-first")"
+    after_new="$(checksum_tree "$d/dst/.claude/skills/delegate-first.new")"
+    [ "$rc" -ne 0 ] || { ok=0; detail="expected non-zero exit for rollback-dir-inside-.new, got 0"; }
+    [ "$before_live" = "$after_live" ] || { ok=0; detail="live skill dir was mutated despite the guard — F-4 .new regression"; }
+    [ "$before_new" = "$after_new" ] || { ok=0; detail=".new scratch dir (including the nested backup) was mutated despite the guard — F-4 .new regression"; }
+  fi
+  if [ "$ok" -eq 1 ]; then record "case18_rollback_dir_containment_refused_new" PASS; else record "case18_rollback_dir_containment_refused_new" FAIL "$detail"; fi
+}
+
+# --- Case 19 (F-4 scratch-path coverage): same as case 18 but for the .old
+# swap-scratch path. ---
+{
+  d="$(case_dir case19)"
+  build_basic_dst "$d/dst"
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak_outside="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak_outside" ] || { ok=0; detail="no backup dir found after install"; }
+  if [ "$ok" -eq 1 ]; then
+    inside_old="$d/dst/.claude/skills/delegate-first.old/nested-backup"
+    mkdir -p "$inside_old"
+    cp -R "$bak_outside/." "$inside_old/"
+    before_live="$(checksum_tree "$d/dst/.claude/skills/delegate-first")"
+    before_old="$(checksum_tree "$d/dst/.claude/skills/delegate-first.old")"
+    out="$(run_reinstall "$d/home" --rollback "$inside_old" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    after_live="$(checksum_tree "$d/dst/.claude/skills/delegate-first")"
+    after_old="$(checksum_tree "$d/dst/.claude/skills/delegate-first.old")"
+    [ "$rc" -ne 0 ] || { ok=0; detail="expected non-zero exit for rollback-dir-inside-.old, got 0"; }
+    [ "$before_live" = "$after_live" ] || { ok=0; detail="live skill dir was mutated despite the guard — F-4 .old regression"; }
+    [ "$before_old" = "$after_old" ] || { ok=0; detail=".old scratch dir (including the nested backup) was mutated despite the guard — F-4 .old regression"; }
+  fi
+  if [ "$ok" -eq 1 ]; then record "case19_rollback_dir_containment_refused_old" PASS; else record "case19_rollback_dir_containment_refused_old" FAIL "$detail"; fi
+}
+
 echo
 echo "=== results ==="
 for r in "${RESULTS[@]}"; do

@@ -183,22 +183,27 @@ do_rollback() {
     exit 1
   }
 
-  # F-4: --rollback 디렉터리가 복원 대상(스킬 디렉터리) 내부이거나 그
-  # 자신이면, 아래 "잔여 .new/.old 정리"·"스킬 디렉터리 복원"의 rm -rf가
-  # 백업까지 먼저 삼켜 live+백업 동시 소실로 이어진다 — 파괴 전에 거부한다.
+  # F-4: --rollback 디렉터리가 복원 대상(스킬 디렉터리)이나 스왑 스크래치
+  # 경로(.new/.old) 내부이거나 그 자신이면, 아래 "잔여 .new/.old 정리"·
+  # "스킬 디렉터리 복원"의 rm -rf가 백업까지 먼저 삼켜 live+백업 동시
+  # 소실로 이어진다 — 파괴 전에 거부한다. .new/.old도 같은 rm -rf 대상이라
+  # 본체(SKILL_TARGET_DIR)만 보면 백업이 그 아래 있을 때 못 잡는다.
   SKILL_TARGET_DIR="$DST/.claude/skills/delegate-first"
-  if [ -d "$SKILL_TARGET_DIR" ]; then
-    RESOLVED_SKILL_TARGET="$(resolve_path "$SKILL_TARGET_DIR")"
-    RESOLVED_ROLLBACK_DIR="$(resolve_path "$ROLLBACK_DIR")"
+  NEW="$SKILL_TARGET_DIR.new"
+  OLD="$SKILL_TARGET_DIR.old"
+  RESOLVED_ROLLBACK_DIR="$(resolve_path "$ROLLBACK_DIR")"
+  for GUARD_PATH in "$SKILL_TARGET_DIR" "$NEW" "$OLD"; do
+    [ -d "$GUARD_PATH" ] || continue
+    RESOLVED_GUARD_PATH="$(resolve_path "$GUARD_PATH")"
     case "$RESOLVED_ROLLBACK_DIR" in
-      "$RESOLVED_SKILL_TARGET"|"$RESOLVED_SKILL_TARGET"/*)
-        err "거부(F-4): --rollback 디렉터리($ROLLBACK_DIR)가 복원 대상($SKILL_TARGET_DIR) 내부(또는 그 자신)다."
+      "$RESOLVED_GUARD_PATH"|"$RESOLVED_GUARD_PATH"/*)
+        err "거부(F-4): --rollback 디렉터리($ROLLBACK_DIR)가 복원/정리 대상($GUARD_PATH) 내부(또는 그 자신)다."
         err "이 상태로 진행하면 복원 단계의 rm -rf가 백업 자체를 먼저 지워 live 트리와 백업이 동시에 사라진다."
-        err "백업을 스킬 디렉터리 바깥으로 옮긴 뒤 다시 실행하라."
+        err "백업을 스킬 디렉터리(및 .new/.old) 바깥으로 옮긴 뒤 다시 실행하라."
         exit 1
         ;;
     esac
-  fi
+  done
 
   # P4: 설치 경로(§2/§3)에는 "중단된 재설치 감지" 가드가 있는데 롤백에는
   # 없었다 — .old만 있고 live 디렉터리가 없는(직전 실행이 mv 직후 중단된)
@@ -240,8 +245,13 @@ do_rollback() {
   PRE_ROLLBACK_STAMP="${REINSTALL_STAMP_OVERRIDE:-$(date +%Y%m%d-%H%M%S)-$$}"
   PRE_ROLLBACK_DIR="$BACKUP_ROOT/pre-rollback-$PRE_ROLLBACK_STAMP"
   mkdir -p "$BACKUP_ROOT"
-  if ! mkdir "$PRE_ROLLBACK_DIR" 2>/dev/null; then
-    err "스냅샷 디렉터리 충돌: $PRE_ROLLBACK_DIR 가 이미 존재한다 — 중단한다(다시 실행하라)."
+  MKDIR_ERR="$(mkdir "$PRE_ROLLBACK_DIR" 2>&1)"
+  if [ $? -ne 0 ]; then
+    if [ -e "$PRE_ROLLBACK_DIR" ]; then
+      err "스냅샷 디렉터리 충돌: $PRE_ROLLBACK_DIR 가 이미 존재한다 — 중단한다(다시 실행하라)."
+    else
+      err "스냅샷 디렉터리 생성 실패: $PRE_ROLLBACK_DIR ($MKDIR_ERR)"
+    fi
     exit 1
   fi
   if [ -d "$SKILL_TARGET_DIR" ]; then
