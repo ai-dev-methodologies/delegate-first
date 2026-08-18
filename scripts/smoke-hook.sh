@@ -64,8 +64,32 @@ run_case "general-purpose, model haiku" '{"tool_input":{"subagent_type":"general
 # --- 플러그인 정의형 pinned 타입 ---
 run_case "oh-my-claudecode:writer, model 없음" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer"}}' 0
 
-# --- tier + model 명시 (덮어쓰기 허용 경로) ---
-run_case "tier executor-high + model opus 명시" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 0
+# --- B-11: tier + model 명시, 기대값과 일치 → 통과 (exit 0) ---
+run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku"}}' 0
+run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet"}}' 0
+run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 0
+run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus"}}' 0
+run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable"}}' 0
+
+# --- B-11: tier + model 명시, 기대값과 불일치 → 차단 (exit 2, 조용한 강등/승급 봉인) ---
+# 주의: 이 두 케이스는 B-11 이전엔 "tier executor-high + model opus 명시"가
+# exit 0(통과)을 기대했었다 — 구버전 훅은 model 값을 전혀 검증하지 않고
+# 비어있지 않은 문자열이면 무조건 통과시켰기 때문이다. B-11이 바로 이
+# 조용한 강등/승급(예: judge-max에 opus를 넘겨 최고 검증 게이트를 저비용
+# 모델로 몰래 낮추는 것)을 막는 것이 목적이므로, 이 exit 2로의 전환은
+# 의도된 동작 변경이지 회귀가 아니다.
+run_case "tier executor-high + model opus(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 2
+run_case "tier judge-max + model opus(강등 시도 → 차단)" '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2
+
+# --- B-11: break-glass ALLOW_TIER_MODEL_OVERRIDE=1 → 불일치도 통과 ---
+run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + judge-max + model opus(불일치)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 0 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+
+# --- B-11: ALLOW_TIER_MODEL_OVERRIDE=1은 "model 미지정 + non-pinned 차단" 경로엔 적용 안 됨(범위 한정 확인) ---
+run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + general-purpose, model 없음(여전히 차단)" \
+  '{"tool_input":{"subagent_type":"general-purpose"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
 
 # --- subagent_type 자체가 없음 ---
 run_case "subagent_type 없음, model 없음" '{"tool_input":{}}' 2

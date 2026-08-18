@@ -14,8 +14,10 @@
      강등될 수 있다(예: `judge-max`에 `opus`). 단 **등록된 모든 PreToolUse Agent
      훅 사본**(프로젝트·전역)의 pinned 목록에 그 tier가 있을 때만 성립 — 누락된
      사본이 있으면 exit 2로 차단되며, 그때 폴백은 해당 tier의 frontmatter
-     `model` 값을 그대로 명시하는 것이다. `effort`·`tools`·`disallowedTools`는
-     override와 무관하게 유지된다.
+     `model` 값을 그대로 명시하는 것이다. `tools`·`disallowedTools`는 override와
+     무관하게 유지된다. **`effort`는 일반 스폰에서만 유지되며, `name`을 동반한
+     named 스폰에서는 유지되지 않는다(2026-08-18 실측, medium→high·low→max
+     사례 관측 — routing-matrix.md §① 참조).**
      이 예외는 delegate-first 정본·설치 프로젝트의 **tier 5종**(§강제 장치
      목록)에 한한다. 다른 프로젝트에서 **동명 에이전트가 보이더라도** 그
      정의의 frontmatter `model` 핀을 **직접 확인하기 전에는** 예외를 적용하지

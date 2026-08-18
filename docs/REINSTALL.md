@@ -2,7 +2,17 @@
 
 이 문서는 **완성된 정본 레포 버전**을 이미 로컬 사본이 돌아가고 있는 프로젝트(최초 대상: `goone-rest`)에 덮어 설치하는 절차다.
 
-> **실행 승인 게이트**: 이 절차는 **사용자 명시 승인 후에만** 실행한다. 대상 프로젝트의 로컬 스킬은 **의도적으로 git 추적 밖(untracked)** 이라 되돌릴 git 히스토리가 없다 — 백업(1단계)을 건너뛰면 복구 수단이 없다.
+> **권장 경로는 `scripts/reinstall.sh`다.** 아래 §0~§5는 사람이 복붙하는 bash 절차라 결함이 5건(B-13/B-14 포함) 나온 뒤에야 봉합됐고, 문서를 아무리 정확히 고쳐도 다음 실행자가 그대로 복붙하지 않으면 같은 사고가 재발할 수 있다. 스크립트가 이 절차(백업 → diff → copy-to-temp-then-swap → tier 에이전트 → 검증)를 코드로 강제하고, `scripts/test-reinstall.sh`로 회귀 테스트가 붙어 있다. 사용 예:
+
+```bash
+./scripts/reinstall.sh --src "/PATH/TO/정본레포" --dst "/PATH/TO/대상프로젝트" --dry-run   # 1. 계획만 확인
+./scripts/reinstall.sh --src "/PATH/TO/정본레포" --dst "/PATH/TO/대상프로젝트" --yes       # 2. 실제 실행
+./scripts/reinstall.sh --rollback "/PATH/TO/백업디렉터리" --dst "/PATH/TO/대상프로젝트" --yes  # 3. 문제 시 롤백
+```
+
+> 전역 훅·규칙 전파/롤백은 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 각각 `--propagate-global`/`--rollback-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§5의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
+
+> **실행 승인 게이트**: 이 절차는 **사용자 명시 승인 후에만** 실행한다(스크립트 경로든 수동 경로든 동일). 대상 프로젝트의 로컬 스킬은 **의도적으로 git 추적 밖(untracked)** 이라 되돌릴 git 히스토리가 없다 — 백업(1단계)을 건너뛰면 복구 수단이 없다.
 
 ---
 
@@ -52,6 +62,8 @@ diff -u "$HOME/.claude/rules/subagent-model-routing.md"  "$SRC/.claude/rules/sub
 ```
 
 아래 기대 목록은 **실측(2026-08-18, `diff -ru`/`diff -u` 읽기 전용 대조, `goone-rest` 로컬 사본 vs 정본 워킹트리 PR #7 head)**이다. "예상 diff는 2파일·5개 논리 변경"이라던 과거 서술은 stale였다 — 실측은 **3파일**이며, `references/routing-matrix.md`가 목록에서 빠져 있었다.
+
+> 아래 실측은 이 문서 작성 시점 기준 정본 스킬 트리의 **현재** 최상위 항목(`SKILL.md`, `references/` 2개)을 전제로 한다. §3의 "정본 제공" 단계는 항목 이름을 하드코딩하지 않고 정본 최상위 전체를 복사하므로, 정본이 새 최상위 항목(예: `CHANGELOG.md`)을 얻으면 이 §2 실측 목록도 늘어난다 — 목록이 다시 stale해지면 아래 "목록이 다시 stale해지는 것을 막는 판정 절차"를 따른다.
 
 ### 스킬 트리 — 실측 3파일, hunk 7개(+ 디렉터리 전용표시 2줄)
 
@@ -112,15 +124,31 @@ NEW="$DST/.claude/skills/delegate-first.new"
 OLD="$DST/.claude/skills/delegate-first.old"
 rm -rf "$NEW"
 mkdir -p "$NEW"
-cp "$SRC/.claude/skills/delegate-first/SKILL.md" "$NEW/SKILL.md"
-cp -R "$SRC/.claude/skills/delegate-first/references" "$NEW/"
+
+# 정본 제공 — $SRC/.claude/skills/delegate-first 최상위 항목 전체(파일·디렉터리·
+# dotfile 포함)를 이름 하드코딩 없이 일반적으로 복사한다. 이렇게 해야 정본이 새
+# 최상위 파일(예: CHANGELOG.md)을 얻었을 때 자동으로 설치 대상에 포함된다 —
+# "SKILL.md/references만 하드코딩"이면 그 신규 파일은 애초에 복사되지 않고, 뒤이은
+# 승계 단계가 DST의 낡은 동명 파일을 그 자리에 채워 넣어 조용히 다운그레이드된다
+# (F3, 2026-08-18 재설치 사후 검토). 복사 직후 각 항목이 실제로 $NEW에 도착했는지
+# 검증한다(아래 승계 루프와 동일한 강도) — 실패하면 스왑 전에 exit 1.
+while IFS= read -r -d '' src_item; do
+  base="$(basename "$src_item")"
+  cp -R "$src_item" "$NEW/"
+  if [ ! -e "$NEW/$base" ] && [ ! -L "$NEW/$base" ]; then
+    echo "정본 제공 실패: $base 가 cp 이후에도 $NEW 에 없다 — 스왑을 중단한다." >&2
+    echo "원본 트리는 아직 살아 있다: $DST/.claude/skills/delegate-first" >&2
+    exit 1
+  fi
+done < <(find "$SRC/.claude/skills/delegate-first" -mindepth 1 -maxdepth 1 -print0)
 
 # 이관 문서 승계 — $DST의 기존 트리에서 정본이 이미 제공한 항목(지금 $NEW에 이미
-# 존재하는 이름 — 예: SKILL.md, references/)을 제외한 나머지를 전부 $NEW로 복사한다.
+# 존재하는 이름 — 위 단계가 채운 정본 최상위 항목 전체)을 제외한 나머지를 전부
+# $NEW로 복사한다.
 # 제외 판정은 이름을 하드코딩하지 않고 "$NEW에 이미 존재하는가"로 파생시킨다 — 이렇게
-# 하면 정본이 새 파일(예: CHANGELOG.md)을 얻어도 그 이름이 $NEW에 이미 있으므로 자동
-# 으로 건너뛰어, DST에 남은 낡은 동명 파일이 방금 복사한 정본판을 덮어써 조용히
-# 다운그레이드시키는 사고를 막는다.
+# 하면 정본이 새 파일(예: CHANGELOG.md)을 얻어도 그 이름이 위 단계에서 이미 $NEW에
+# 채워졌으므로 자동으로 건너뛰어, DST에 남은 낡은 동명 파일이 방금 복사한 정본판을
+# 덮어써 조용히 다운그레이드시키는 사고를 막는다.
 # dotfile도 반드시 포함한다 — find는 -mindepth 1 -maxdepth 1로 "."/".."만 제외하고
 # dotfile은 나열하므로 별도 처리 없이 포함된다(글로빙 `*`만 썼다면 누락됐을 것).
 # 근거: 스왑은 디렉터리를 통째로 교체하므로, 이 단계 없이는 정본이 제공하지 않는 기존

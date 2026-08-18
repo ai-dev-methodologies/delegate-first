@@ -282,6 +282,67 @@ open(p, 'w', encoding='utf-8').write(content)
 "
 run_and_check "P-1 회귀2: 2차 표 헤더 오타+잘못된 실행경로 행 (FAIL 기대)" 1
 
+# 19. B-09: MODEL_PINNED_TYPES Set 항목에 문자열 연결(+) 사용 — model/map은
+# 건드리지 않는다(순수 파싱 신호만 격리해서 확인). 구버전 린터는 이 항목을
+# STRING_LITERAL_RE.finditer로 "executor-"와 "high" 두 개의 별개 유효 항목
+# 으로 오추출해(둘 다 IDENT_RE 문자 집합을 통과) 원래 이름 "executor-high"가
+# pinned 목록에서 조용히 "빠진 것"처럼 보이게 만들었다 — FAIL 없이 WARN만
+# 발생해 기본 모드에서 exit 0이었다(BACKLOG B-09 실측과 동일 패턴).
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\", // sonnet/high\n'
+new = '  \"executor-\" + \"high\", // sonnet/high\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-09: Set 항목 문자열 연결(+) (FAIL 기대)" 1
+
+# 20. B-09: MODEL_PINNED_TYPES Set 항목에 템플릿 리터럴 보간(\${...}) 사용.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\", // sonnet/high\n'
+new = '  \`executor-\${\"high\"}\`, // sonnet/high\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-09: Set 항목 템플릿 리터럴 보간 (FAIL 기대)" 1
+
+# 21. B-11: TIER_EXPECTED_MODEL map에서 tier 하나 누락(Set·frontmatter는
+# 그대로) — pinned Set엔 'executor-high'가 있고 frontmatter도 정상인데 map
+# 에서만 그 항목이 빠진 상태. 구버전 린터(TIER_EXPECTED_MODEL을 전혀 모름)
+# 는 이 드리프트를 원리상 볼 수 없어 exit 0이다.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"sonnet\",\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, '', 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-11: map에 tier 누락 (FAIL 기대)" 1
+
+# 22. B-11: TIER_EXPECTED_MODEL map 값이 frontmatter와 불일치(Set은 그대로,
+# frontmatter도 그대로 sonnet) — map만 'opus'로 드리프트된 상태. 구버전
+# 린터는 map을 전혀 읽지 않으므로 이 드리프트도 원리상 볼 수 없어 exit 0.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"sonnet\",\n'
+new = '  \"executor-high\": \"opus\",\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-11: map 값이 frontmatter와 불일치 (FAIL 기대)" 1
+
 # ===========================================================================
 # 음성 케이스 (PASS를 기대 — 종료코드 0)
 # ===========================================================================

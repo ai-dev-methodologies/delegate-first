@@ -28,6 +28,7 @@ tier 에이전트 정의(`.claude/agents/*.md`)는 각 5종을 [SKILL.md](../SKI
 - 범용 위임 — 탐색·구현·리뷰 1차 대부분은 이 경로로 충분하다.
 - 핀 누락으로 차단되면 폴백은 훅 stderr의 일반 안내가 아니라 **그 tier의 frontmatter model 값(위 표/문단의 값)을 그대로 명시**하는 것이다. 다른 값을 넘기면 훅은 값 검증을 하지 않으므로 통과하고, pinned 조합이 **조용히 강등**된다(예: `judge-max`에 `opus`를 넘기면 fable 게이트가 opus로 내려앉는다).
 - 등록된 훅이 여러 벌이면(전역·프로젝트) 모두 실행되고 그중 하나라도 차단하면 전체가 차단된다 — 실행 순서는 확인되지 않았으므로 전역·프로젝트 사본을 모두 갱신해야 한다.
+- **★2026-08-18 실측**: `name` 파라미터를 동반한 named 스폰은 model은 frontmatter가 그대로 적용되지만 **effort는 frontmatter 값이 적용되지 않는다**(관측: `executor-med`의 medium 정의가 high로, `explorer-low`+override의 low 정의가 max로 나옴). effort가 결과를 좌우하는 위임에는 `name`을 붙이지 말 것 — 붙여야 한다면 effort를 직접 지정 가능한 경로(Workflow `agent()` 등)를 쓴다. haiku 계열은 transcript에 effort 키 자체가 없어 적용 여부 판정 불가.
 
 ### ② Workflow `agent()`
 - `model` + `effort`(`'low'`~`'max'`) 모두 지정 가능.

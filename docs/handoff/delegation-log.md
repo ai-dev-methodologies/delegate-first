@@ -43,4 +43,8 @@
 | 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | pass |
 | 2026-08-18 | explorer-low | B-06 end-to-end 실측 양성 프로브(model 파라미터 없이 스폰) | (파라미터 생략) | low(frontmatter, 미기록) | Agent(tier) | pass (실제 haiku-4-5 적용 확인) |
 | 2026-08-18 | executor-med | B-06 effort 적용 확인 프로브(model 없이 스폰) | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (sonnet-5 + effort medium 확인) |
-| 2026-08-18 | executor-high | B-06·B-08 증거 기록 + REINSTALL 결함 봉합 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | B-06·B-08 증거 기록 + REINSTALL 결함 봉합 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | executor-high | B-11·B-09 구현 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | explorer-low | B-12 named 스폰 프로브(name 동반, override 없음) | (파라미터 생략) | low(frontmatter, 미적용 관측) | Agent(tier) | pass (model=haiku 적용, effort 키 없음) |
+| 2026-08-18 | executor-med | B-12 변수분리 프로브(named, override 없음) | (파라미터 생략) | medium(frontmatter, 미적용) | Agent(tier) | pass (effort=high로 관측 — named 스폰 effort 미적용 확정) |
+| 2026-08-18 | executor-high | B-13/B-14 재설치 스크립트화 + 정본 제공목록 일반화 | sonnet | high(frontmatter) | Agent(tier) | pass (test-reinstall 12/12) |

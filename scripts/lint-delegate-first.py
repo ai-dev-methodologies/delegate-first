@@ -2,14 +2,28 @@
 """
 scripts/lint-delegate-first.py — B-07 + B-02 린터 (표준 라이브러리만 사용).
 
-Check A (B-07): `.claude/agents/*.md` frontmatter ↔ `enforce-subagent-model.cjs`의
-  MODEL_PINNED_TYPES 정합성. 가장 중요한 검출 대상은 fail-open 드리프트다 —
-  tier 에이전트 정의는 그대로 두고 frontmatter의 model을 제거하거나 inherit로
-  바꿨는데 pinned 목록에는 이름이 잔존하는 경우, 화이트리스트가 그대로
-  통과시켜 세션 모델 상속이 조용히 재개된다. "model 없음"과 동등한 값
-  (빈 문자열/inherit/null/~/none)도 모두 fail-open으로 취급한다 — 이 레포의
-  훅(enforce-subagent-model.cjs)이 `typeof model === "string" && model.trim()`로
-  공백 문자열도 미지정으로 취급하는 것과 규약을 맞춘 것이다.
+Check A (B-07 + B-09 + B-11): `.claude/agents/*.md` frontmatter ↔
+  `enforce-subagent-model.cjs`의 MODEL_PINNED_TYPES 정합성. 가장 중요한 검출
+  대상은 fail-open 드리프트다 — tier 에이전트 정의는 그대로 두고
+  frontmatter의 model을 제거하거나 inherit로 바꿨는데 pinned 목록에는 이름이
+  잔존하는 경우, 화이트리스트가 그대로 통과시켜 세션 모델 상속이 조용히
+  재개된다. "model 없음"과 동등한 값(빈 문자열/inherit/null/~/none)도 모두
+  fail-open으로 취급한다 — 이 레포의 훅(enforce-subagent-model.cjs)이
+  `typeof model === "string" && model.trim()`로 공백 문자열도 미지정으로
+  취급하는 것과 규약을 맞춘 것이다.
+
+  B-09 보강: MODEL_PINNED_TYPES Set 항목은 "정적 문자열 리터럴 하나"만
+  허용한다 — 문자열 연결(`"executor-" + "high"`), 템플릿 리터럴 보간
+  (`` `executor-${x}` ``), 식별자, 함수 호출 등 정적으로 해석 불가한 형태가
+  섞여 있으면 FAIL로 표면화한다(정규식으로 JS를 완전히 파싱하려는 시도는
+  하지 않는다 — "정적 리터럴이 아니면 사람이 확인해야 한다"는 신호만 낸다).
+
+  B-11 보강: 훅의 `TIER_EXPECTED_MODEL`(tier → 기대 model 정적 map)도 같은
+  방식(정적 리터럴만 허용)으로 파싱하고, MODEL_PINNED_TYPES Set 목록 ↔
+  TIER_EXPECTED_MODEL map ↔ agents/*.md frontmatter 3자가 서로 어긋나면
+  FAIL로 표면화한다(예: pinned에는 있는 tier가 map에 없거나, map의 값이
+  frontmatter model과 다른 경우 — 이건 훅이 조용히 잘못된 값으로 강등/승급을
+  차단하거나 허용하게 만드는 새로운 드리프트 축이다).
 
 Check B (B-02): 위임 로그(기본 docs/handoff/delegation-log.md)의 마크다운 표가
   `날짜 | agent | role | model | effort | 실행경로 | 결과` 7컬럼 스키마를
@@ -166,8 +180,12 @@ def build_name_index(agent_files: list, findings: list) -> dict:
 
 
 SET_START_RE = re.compile(r"new\s+Set\(\s*\[")
+MAP_START_RE = re.compile(r"TIER_EXPECTED_MODEL\s*=\s*\{")
 STRING_LITERAL_RE = re.compile(r"""(['"`])((?:(?!\1).)*)\1""")
 IDENT_RE = re.compile(r"^[A-Za-z0-9:_.-]+$")
+# key(따옴표 리터럴): value(나머지 전부) — value는 이미 top-level comma로
+# 분리된 조각이므로 콜론 뒤 텍스트 전체가 value 후보다.
+KV_SPLIT_RE = re.compile(r"""^((?:'[^']*'|"[^"]*"|`[^`]*`))\s*:\s*(.*)$""")
 
 
 def _strip_comments_stateful(line: str, in_block_comment: bool) -> tuple[str, bool]:
@@ -196,17 +214,133 @@ def _strip_comments_stateful(line: str, in_block_comment: bool) -> tuple[str, bo
     return "".join(result), in_block_comment
 
 
+def split_top_level_commas(text: str) -> list:
+    """텍스트를 따옴표(', ", `) 밖의 콤마 기준으로 분할한다.
+
+    Set([...])나 {...} 안의 항목이 한 줄에 여럿(`"a", "b",`) 있어도, 문자열
+    리터럴 내부의 콤마는 구분자로 취급하지 않는다. 이스케이프(`\\`)는 따옴표
+    안에서만 다음 한 글자를 그대로 통과시킨다(문자열 종료 오판 방지).
+    """
+    items: list = []
+    current: list = []
+    quote: Optional[str] = None
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote:
+            current.append(ch)
+            if ch == "\\" and i + 1 < n:
+                current.append(text[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ("'", '"', '`'):
+            quote = ch
+            current.append(ch)
+            i += 1
+            continue
+        if ch == ",":
+            items.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    if current:
+        items.append("".join(current))
+    return items
+
+
+def classify_static_literal(item: str) -> tuple:
+    """item(이미 앞뒤 공백 제거됨)이 "정적 문자열 리터럴 하나"인지 판정한다.
+
+    B-09: 이 린터는 실제 JS 파서가 아니다(정규식으로 JS를 완전히 파싱하려는
+    시도는 지는 싸움이다) — 그래서 "정적 리터럴이 아니면 FAIL로 표면화해
+    사람이 확인하게 한다"는 좁고 안전한 계약만 구현한다. 연결 연산자
+    (`"a" + "b"`), 식별자, 함수 호출처럼 STRING_LITERAL_RE 전체 일치에
+    실패하는 형태는 전부 여기서 걸린다. 백틱 리터럴은 전체 일치에는 성공할
+    수 있어도(백틱이 내부에 없으면 그 자체로 하나의 리터럴처럼 보이므로)
+    `${...}` 보간이 포함돼 있으면 별도로 다시 FAIL 처리한다.
+
+    Returns (value, error) — 성공 시 (문자열, None), 실패 시 (None, 사유).
+    """
+    m = STRING_LITERAL_RE.fullmatch(item)
+    if not m:
+        return None, f"정적 문자열 리터럴 하나가 아님(연결·식별자·함수호출 등으로 의심됨): {item!r}"
+    quote, inner = m.group(1), m.group(2)
+    if quote == "`" and "${" in inner:
+        return None, f"템플릿 리터럴 보간(${{...}}) 포함, 정적 파싱 불가: {item!r}"
+    return inner, None
+
+
 def _scan_entries(text: str, line_no: int, entries: list, findings: list, hook_path: Path) -> None:
-    for m in STRING_LITERAL_RE.finditer(text):
-        name = m.group(2)
-        if not IDENT_RE.match(name):
+    """MODEL_PINNED_TYPES Set 블록의 한 줄(또는 종결자 앞 조각)을 항목으로
+    분해한다. B-09: 항목 전체가 "정적 문자열 리터럴 하나"가 아니면(문자열
+    연결·템플릿 보간·식별자·함수 호출 등) FAIL — 예전엔 STRING_LITERAL_RE를
+    finditer로 돌려 조각난 리터럴(`"executor-" + "high"`의 "executor-"와
+    "high")을 각각 별개의 유효 항목으로 오추출했다(B-09 실측 결함)."""
+    for raw_item in split_top_level_commas(text):
+        item = raw_item.strip()
+        if not item:
+            continue
+        value, err = classify_static_literal(item)
+        if err:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"MODEL_PINNED_TYPES 항목이 {err} — 이 린터는 정적 목록만 "
+                f"검증할 수 있으므로 사람이 직접 확인해야 함"))
+            continue
+        if not IDENT_RE.match(value):
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
                 f"MODEL_PINNED_TYPES 항목 이름이 예상 문자 집합([A-Za-z0-9:_.-])을 "
-                f"벗어남: {name!r} — 파싱 폭주(Set 리터럴 종결자 누락 등) 의심, "
+                f"벗어남: {value!r} — 파싱 폭주(Set 리터럴 종결자 누락 등) 의심, "
                 f"조용히 통과시키지 않음"))
             continue
-        entries.append((name, line_no))
+        entries.append((value, line_no))
+
+
+def _scan_map_entries(text: str, line_no: int, entries: list, findings: list, hook_path: Path) -> None:
+    """TIER_EXPECTED_MODEL 객체 블록의 한 줄(또는 종결자 앞 조각)을
+    `key: value` 항목으로 분해한다(B-11/B-09). key와 value 모두 정적 문자열
+    리터럴 하나여야 한다 — 계산된 프로퍼티(`[expr]: ...`), 식별자 키,
+    연결·보간된 값은 전부 FAIL로 표면화한다."""
+    for raw_item in split_top_level_commas(text):
+        item = raw_item.strip()
+        if not item:
+            continue
+        m = KV_SPLIT_RE.match(item)
+        if not m:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL 항목을 'key: value' 형태(key는 정적 문자열 "
+                f"리터럴)로 정적 파싱할 수 없음 — 계산된 키·비-리터럴 형태로 "
+                f"의심됨: {item!r}"))
+            continue
+        key_raw, value_raw = m.group(1), m.group(2).strip()
+        key_value, key_err = classify_static_literal(key_raw)
+        if key_err:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL 키가 {key_err}"))
+            continue
+        if not IDENT_RE.match(key_value):
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL 키 이름이 예상 문자 집합([A-Za-z0-9:_.-])을 "
+                f"벗어남: {key_value!r}"))
+            continue
+        val_value, val_err = classify_static_literal(value_raw)
+        if val_err:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL['{key_value}'] 값이 {val_err}"))
+            continue
+        entries.append((key_value, val_value, line_no))
 
 
 def extract_pinned_types(hook_path: Path) -> tuple[list, list]:
@@ -250,6 +384,51 @@ def extract_pinned_types(hook_path: Path) -> tuple[list, list]:
             "FAIL", hook_path, None,
             "MODEL_PINNED_TYPES Set 블록이 파일 끝까지 닫히지 않음"
             "(']);' 종결자를 찾지 못함) — 파싱 실패"))
+
+    return entries, findings
+
+
+def extract_tier_expected_model(hook_path: Path) -> tuple:
+    """TIER_EXPECTED_MODEL 객체 리터럴에서 (key, value, line_no) 목록을
+    추출한다(B-11). extract_pinned_types와 동일한 구조 — 진입한 줄의 나머지
+    부분부터 바로 스캔하고(F3와 같은 종류의 함정 방지), 같은 줄에 종결자
+    (`};`)가 있으면 그 자리에서 블록을 닫는다.
+
+    한계: 항목이 여러 줄에 걸쳐 쓰이면(예: key와 value가 다른 줄) 인식하지
+    못한다 — 이 레포의 실제 포매팅(한 항목 = 한 줄)을 전제로 한다.
+    """
+    content = read_text_safe(hook_path)
+    lines = content.splitlines()
+    entries: list = []
+    findings: list = []
+    in_block = False
+    in_block_comment = False
+    closed = False
+
+    for i, raw_line in enumerate(lines, start=1):
+        code_line, in_block_comment = _strip_comments_stateful(raw_line, in_block_comment)
+
+        if not in_block:
+            if "TIER_EXPECTED_MODEL" in code_line and MAP_START_RE.search(code_line):
+                in_block = True
+                start_m = MAP_START_RE.search(code_line)
+                code_line = code_line[start_m.end():]
+            else:
+                continue
+
+        close_idx = code_line.find("};")
+        if close_idx != -1:
+            _scan_map_entries(code_line[:close_idx], i, entries, findings, hook_path)
+            in_block = False
+            closed = True
+            break
+        _scan_map_entries(code_line, i, entries, findings, hook_path)
+
+    if in_block and not closed:
+        findings.append(Finding(
+            "FAIL", hook_path, None,
+            "TIER_EXPECTED_MODEL 객체 블록이 파일 끝까지 닫히지 않음"
+            "('};' 종결자를 찾지 못함) — 파싱 실패"))
 
     return entries, findings
 
@@ -336,6 +515,85 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
                 "WARN", agent_file, None,
                 f"'{name_val}'이 agents/에 있지만 훅 pinned 목록엔 없음 "
                 f"(fail-closed라 안전하지만 의도된 것인지 확인 필요)"))
+
+    # -----------------------------------------------------------------
+    # B-11 + B-09: TIER_EXPECTED_MODEL map ↔ MODEL_PINNED_TYPES Set ↔
+    # agents/*.md frontmatter 3자 정합성. 이 map은 훅이 tier의 model 값
+    # 불일치(조용한 강등/승급)를 차단할 때 쓰는 진실의 원천이므로, 여기서
+    # 드리프트되면 훅이 잘못된 값으로 정상 호출을 차단하거나(map이 stale)
+    # 반대로 실제 강등을 놓칠 수 있다(map 자체가 frontmatter와 다른 값으로
+    # 굳어 있으면 그 값과의 "일치"만 확인하므로 진짜 fail-open과는 다르지만
+    # 여전히 훅의 판정 기준 자체가 틀린 상태다).
+    try:
+        map_entries, map_extract_findings = extract_tier_expected_model(hook_path)
+    except ReadError as e:
+        findings.append(Finding("FAIL", hook_path, None, str(e)))
+        return findings
+    findings.extend(map_extract_findings)
+
+    if not map_entries:
+        findings.append(Finding(
+            "FAIL", hook_path, None,
+            "TIER_EXPECTED_MODEL에서 유효 항목을 하나도 파싱하지 못함 — "
+            "비공허성 자기검사 실패, map↔pinned↔frontmatter 교차검사 중단"))
+        return findings
+
+    map_dict: dict = {}
+    for key, value, line_no in map_entries:
+        if key in map_dict:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL에 '{key}' 항목이 중복으로 존재함"))
+            continue
+        map_dict[key] = (value, line_no)
+
+    # 정방향: pinned Set에 있고 이 레포 agents/에 정의 파일이 있는(=진짜
+    # tier 에이전트) 이름은 반드시 map에도 있어야 한다.
+    for name in sorted(pinned_names_seen):
+        if name in KNOWN_EXTERNAL_PINNED:
+            continue  # 빌트인 — map 대상 아님(이미 위에서 INFO 처리됨).
+        entry = name_index.get(name)
+        if entry is None:
+            continue  # 이 레포 밖 정의 — 이미 위에서 WARN 처리됨.
+        if name not in map_dict:
+            findings.append(Finding(
+                "FAIL", hook_path, None,
+                f"pinned 목록의 tier '{name}'이 TIER_EXPECTED_MODEL map에 없음 — "
+                f"이 tier에 대한 B-11 값 검증(조용한 강등/승급 차단)이 조용히 "
+                f"미적용됨"))
+
+    # 역방향: map에 있는 이름은 pinned Set에도, agents/ 정의 파일에도 있어야
+    # 하고, map 값은 그 정의의 frontmatter model과 일치해야 한다.
+    for name, (value, line_no) in map_dict.items():
+        if name not in pinned_names_seen:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL['{name}']이 MODEL_PINNED_TYPES Set 목록에 없음 — "
+                f"map과 pinned 목록이 서로 어긋남"))
+
+        entry = name_index.get(name)
+        if entry is None:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL['{name}']에 대응하는(frontmatter name 필드 "
+                f"일치) agents 파일이 {agents_dir}에 없음"))
+            continue
+
+        agent_file, fm = entry
+        model_entry = fm.get("model")
+        is_fail_open, _reason = classify_model_value(model_entry)
+        if is_fail_open:
+            # 이미 위 fail-open 루프에서 이 조합에 대해 FAIL을 보고했다 —
+            # 같은 근본 원인에 대한 중복 보고를 피한다.
+            continue
+
+        fm_value = model_entry[0].strip()
+        if fm_value.lower() != value.strip().lower():
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_MODEL['{name}'] = {value!r}이 frontmatter model "
+                f"{fm_value!r}({agent_file})과 다름 — map이 드리프트됨, 훅의 "
+                f"강등/승급 차단 기준이 실제 tier 정의와 어긋나 있음"))
 
     return findings
 
