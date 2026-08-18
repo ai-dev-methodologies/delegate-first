@@ -40,6 +40,8 @@ cp "$HOME/.claude/rules/subagent-model-routing.md"  "$BAK/" 2>/dev/null  # 없�
 
 백업 디렉터리가 실제로 채워졌는지 눈으로 확인한다(`find "$BAK" -type f`). 0바이트·빈 디렉터리를 "존재=정상"으로 넘기지 않는다.
 
+**주의 — 전역 파일(훅·규칙)은 전파 전에 따로 백업해야 롤백 가치가 있다**: 위 블록의 `$BAK/enforce-subagent-model.cjs`·`$BAK/subagent-model-routing.md`는 **이 재설치를 시작하는 시점**의 전역 상태를 담는다. 만약 이 재설치보다 **먼저** 별도 절차(예: B-08류 전역 전파)로 전역 훅·규칙이 이미 정본판으로 갱신된 뒤라면, 이 `$BAK`에 담기는 것도 이미 정본판이라 롤백 가치가 없다 — 그런 경우 롤백에 쓸 "전파 전" 백업은 그 별도 절차가 만든 백업(예: `~/.claude-backups/b08-<stamp>/`)이어야 한다. §5 참고.
+
 ## 2. 교체 전 diff 확인 (덮어쓰기 전에 무엇이 바뀌는지 본다)
 
 ```bash
@@ -81,7 +83,7 @@ hunk 수를 세지 말고 각 hunk의 **내용**을 위 목록과 대조한다. 
 
 ### 규칙 파일 — 정본이 앞서 있음(diff 정상)
 
-실측(2026-08-18): `$HOME/.claude/rules/subagent-model-routing.md`(B-08 이전 상태)와 `$SRC/.claude/rules/subagent-model-routing.md`(PR #7 — §원칙2 예외 범위 한정 문장, §강제 장치 서술 완화·린터 대조 범위 명시) 사이에 diff가 있다. 규칙 파일은 판정이 다르다 — 정본에서 라우팅 규칙을 고치면 diff가 발생하는 것이 **정상**이다. 이때는 "로컬이 앞서 있다"가 아니라 "**정본이 앞서 있다**"는 뜻이므로 멈추지 말고 §3의 cp로 전파한다. (역포팅 케이스와 헷갈리면 `git -C <정본레포> log -p -- .claude/rules/subagent-model-routing.md`로 정본 쪽 최근 변경 이력을 먼저 확인한다 — 로컬을 직접 고친 기억이 없는데 diff가 있다면 정본 갱신이다.)
+실측(2026-08-18): `$HOME/.claude/rules/subagent-model-routing.md`(B-08 이전 상태)와 `$SRC/.claude/rules/subagent-model-routing.md`(PR #7 — §원칙2 예외 범위 한정 문장, §강제 장치 서술 완화·린터 대조 범위 명시) 사이에 diff가 있다. 규칙 파일은 판정이 다르다 — 정본에서 라우팅 규칙을 고치면 diff가 발생하는 것이 **정상**이다. 이때는 "로컬이 앞서 있다"가 아니라 "**정본이 앞서 있다**"는 뜻이므로 멈추지 말고 §3의 cp로 전파한다. (역포팅 케이스와 헷갈리면 `git -C <정본레포> log -p -- .claude/rules/subagent-model-routing.md`로 정본 쪽 최근 변경 이력을 먼저 확인한다 — 로컬을 직접 고친 기억이 없는데 diff가 있다면 정본 갱신이다.) §3의 규칙 전파 단계(`cp`)를 수행한 뒤에는 이 diff도 **비어야 한다** — 전파 후에도 diff가 있으면 멈추고 원인을 파악한다(지금 이 §2 명령을 그대로 실행하면, 전파가 이미 끝난 상태에서는 훅·규칙 둘 다 빈 출력이 정상이다).
 
 ### 목록이 다시 stale해지는 것을 막는 판정 절차
 
@@ -93,6 +95,10 @@ hunk 수를 세지 말고 각 hunk의 **내용**을 위 목록과 대조한다. 
 ## 3. 교체
 
 `$SRC`가 미설정이거나 오경로인 채로 아래 블록만 실행하면, 종전에는 `rm -rf`가 `$SRC` 유효성 검사보다 먼저 실행돼 live `references/`를 지운 뒤 `cp`가 전부 실패해 스킬이 파손되는 사고가 가능했다. 그래서 ①선두에 `set -euo pipefail`로 중간 실패 시 즉시 중단 ②delete 전에 `$SRC`/`$DST` 존재를 가드로 확인 ③delete-then-copy 대신 **copy-to-temp-then-swap**(새 트리를 인접 임시 경로에 먼저 완성 → 기존을 `.old`로 옮기고 새 것을 제자리에 놓은 뒤 `.old` 삭제)으로 바꿨다. 이 순서면 중간에 어디서 실패해도 기존 `delegate-first/` 트리가 그대로 살아 있다. 중단됐으면 `.old`가 구 트리다 — `.old`를 제자리(`delegate-first`)로 되돌리면 복구된다.
+
+**재실행 위험 (2026-08-18 리뷰 실측)**: 스왑이 `mv → .old` 직후(즉 `.old`만 있고 `delegate-first`가 아직 없는 상태)에서 중단된 채 이 블록을 **그대로 재실행**하면, 스왑 직전의 무조건 `rm -rf "$OLD"`가 가드 없이 먼저 실행돼 유일한 복구본인 `.old`를 지운다 — 실측으로 HANDOFF.md가 완전히 소실되는 것을 확인했다. 아래 블록은 이 상태를 감지하면 지우지 않고 중단하도록 가드를 넣었다.
+
+**승계 실패 감지 (2026-08-18 리뷰 실측)**: 예전 승계 단계는 `find ... -exec cp -R {} "$NEW/" \;` 형태였는데, **`-exec`는 개별 호출이 전부 실패해도 `find` 자체는 exit 0을 반환할 수 있다**(실측: 두 파일 다 Permission denied인데도 다음 줄에 도달) — `set -euo pipefail`이 이 실패를 못 잡는다. 그 결과 승계가 0건이어도 스왑이 그대로 진행되고 `rm -rf "$OLD"`가 구 트리를 영구 삭제해, 이 문서가 봉합했다고 선언한 손실 모드가 I/O 실패 시 그대로 재현될 수 있었다. 아래 블록은 `find -exec` 대신 **명시적 while 루프 + 복사 직후 목적지 존재 검증**으로 바꿔, `set -e`에 의존하지 않고 승계 실패를 스왑 전에 exit 1로 잡는다.
 
 ```bash
 set -euo pipefail
@@ -108,7 +114,54 @@ rm -rf "$NEW"
 mkdir -p "$NEW"
 cp "$SRC/.claude/skills/delegate-first/SKILL.md" "$NEW/SKILL.md"
 cp -R "$SRC/.claude/skills/delegate-first/references" "$NEW/"
+
+# 이관 문서 승계 — $DST의 기존 트리에서 정본이 이미 제공한 항목(지금 $NEW에 이미
+# 존재하는 이름 — 예: SKILL.md, references/)을 제외한 나머지를 전부 $NEW로 복사한다.
+# 제외 판정은 이름을 하드코딩하지 않고 "$NEW에 이미 존재하는가"로 파생시킨다 — 이렇게
+# 하면 정본이 새 파일(예: CHANGELOG.md)을 얻어도 그 이름이 $NEW에 이미 있으므로 자동
+# 으로 건너뛰어, DST에 남은 낡은 동명 파일이 방금 복사한 정본판을 덮어써 조용히
+# 다운그레이드시키는 사고를 막는다.
+# dotfile도 반드시 포함한다 — find는 -mindepth 1 -maxdepth 1로 "."/".."만 제외하고
+# dotfile은 나열하므로 별도 처리 없이 포함된다(글로빙 `*`만 썼다면 누락됐을 것).
+# 근거: 스왑은 디렉터리를 통째로 교체하므로, 이 단계 없이는 정본이 제공하지 않는 기존
+# 파일이 조용히 사라진다 — 2026-08-18 goone-rest 재설치 실행 중 HANDOFF.md·
+# NEW-REPO-PROMPT.md가 이 결함으로 삭제될 뻔했고, 그 자리에서 승계 방식으로 교정했다.
+if [ -d "$DST/.claude/skills/delegate-first" ]; then
+  while IFS= read -r -d '' src_item; do
+    base="$(basename "$src_item")"
+    # 정본이 이미 제공한 이름이면 승계하지 않는다(F3: 하드코딩 제외 목록 대신
+    # "$NEW에 이미 있는가"로 판정).
+    if [ -e "$NEW/$base" ]; then
+      continue
+    fi
+    cp -R "$src_item" "$NEW/"
+    # F1: cp 자체가 아니라 find -exec 조합이 실패를 삼켰던 것이 원래 결함이므로,
+    # 여기서는 cp를 -exec 밖에서 직접 호출해 set -e가 실패를 잡게 하는 것과 별개로
+    # 복사 직후 목적지 존재를 한 번 더 명시적으로 검산한다 — "성공했겠지"에
+    # 의존하지 않는다. `-e`만 쓰면 상대경로 심볼릭 링크가 같은 루프에서 아직
+    # 복사되지 않은 형제 파일을 가리킬 때 대상이 없다는 이유로 오탐(false fail)한다
+    # — `-e`(대상 존재)와 `-L`(링크 자체 존재, dangling 허용)을 함께 확인한다.
+    if [ ! -e "$NEW/$base" ] && [ ! -L "$NEW/$base" ]; then
+      echo "승계 실패: $base 가 cp 이후에도 $NEW 에 없다 — 스왑을 중단한다." >&2
+      echo "원본 트리는 아직 살아 있다: $DST/.claude/skills/delegate-first" >&2
+      exit 1
+    fi
+  done < <(find "$DST/.claude/skills/delegate-first" -mindepth 1 -maxdepth 1 -print0)
+fi
+
 # (여기서 $NEW 내용을 눈으로 확인하고 싶으면 다음 줄 실행 전에 멈춰도 된다)
+
+# F2 가드: 스왑이 "mv → .old" 직후(= .old만 있고 delegate-first가 없음) 중단된
+# 상태에서 이 블록을 재실행하면, 아래 무조건 rm -rf "$OLD"가 가드 없이 먼저 실행돼
+# 유일한 복구본을 지운다(2026-08-18 리뷰 실측: HANDOFF.md 완전 소실 재현). 재실행
+# 시 이 상태를 먼저 감지해 지우지 않고 중단한다.
+if [ -e "$OLD" ] && [ ! -e "$DST/.claude/skills/delegate-first" ]; then
+  echo "중단된 재설치 감지: $OLD 는 있는데 $DST/.claude/skills/delegate-first 가 없다." >&2
+  echo "이전 실행이 스왑 도중(mv 직후) 중단된 상태로 보인다 — $OLD 를 지우지 않고 중단한다." >&2
+  echo "복구하려면: mv \"$OLD\" \"$DST/.claude/skills/delegate-first\" 로 되돌린 뒤 원인을 파악하고 처음부터 다시 실행하라." >&2
+  exit 1
+fi
+
 rm -rf "$OLD"
 mv "$DST/.claude/skills/delegate-first" "$OLD"
 mv "$NEW" "$DST/.claude/skills/delegate-first"
@@ -124,13 +177,16 @@ cp "$SRC/.claude/rules/subagent-model-routing.md" "$HOME/.claude/rules/"
 cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"
 ```
 
-**HANDOFF.md / NEW-REPO-PROMPT.md 처리**: 이 2개는 로컬 스킬 디렉터리에 남아 있는 이관용 문서다. 정본 레포가 `docs/HANDOFF-2026-08-17.md`로 이력을 보존하므로 로컬에서는 삭제 가능하지만, **삭제는 이 절차에서 자동으로 하지 않는다** — 사용자 확인 후 별도로 지운다(스킬 로딩에는 영향 없음).
+**HANDOFF.md / NEW-REPO-PROMPT.md 처리**: 이 2개는 로컬 스킬 디렉터리에 남아 있는 이관용 문서다. 위 승계 단계가 이 둘을 포함해 정본이 제공하지 않는 기존 파일 전체를 자동으로 `$NEW`로 이관하므로, **스왑 자체로는 삭제되지 않는다**. 정본 레포가 `docs/HANDOFF-2026-08-17.md`로 이력을 보존하므로 로컬에서는 삭제해도 무방하지만, **삭제는 이 절차에서 자동으로 하지 않는다** — 지우고 싶으면 스왑 후 사용자 확인을 거쳐 별도로 지운다(스킬 로딩에는 영향 없음).
 
 ## 4. 검증 3단계 (재설치 후 필수)
 
 1. **스킬 로드** — goone-rest 세션에서 `/delegate-first` 호출 → `SKILL.md` 본문이 로드되고 3단계 문구가 **파라미터 표현**으로 바뀐 것을 확인.
+   - **2026-08-18 실행 결과**: 파일 내용으로 확인 완료 — `SKILL.md`에 파라미터 표현("for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead")과 `## Idle recovery` 절(타임박스·폴링 만료 감지·재위임)이 goone-rest 로컬 사본에 반영된 것을 확인했다.
 2. **훅 차단 스모크** — `model` 없이 Agent 즉석 호출 → exit 2 차단 + 라우팅 안내 stderr 확인. (§0의 "훅 등록 위치" 확인을 먼저 통과해야 이 스모크의 결과를 해석할 수 있다.)
+   - **2026-08-18 실행 결과**: 전역 훅 대상 `scripts/smoke-hook.sh` 스모크 24/24 PASS + 실제 Agent 호출로 범용 타입(`general-purpose`)을 `model` 없이 호출 → exit 2 차단(라우팅 안내 포함) 확인.
 3. **tier 에이전트 스폰** — `subagent_type: explorer-low` 1회 호출 → haiku/low 적용 확인. **B-06([../BACKLOG.md](../BACKLOG.md), 정본 레포 PR #2)이 해소되었으므로, §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 수행한 뒤에는 이 3번이 수행 가능하다.** `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 이제 등록돼 있어, `model` 없이 tier를 호출해도 통과한다. 단 §3의 훅 전파 단계를 건너뛰었거나 전역(`~/.claude/hooks/`)에 tier 5종이 없는 구 버전이 남아 있으면 여전히 exit 2로 차단된다 — 우회하려고 `model`을 넘기면 통과는 하지만 그 순간 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합이 그대로 적용됐는지"를 검증한다는 3번의 목적 자체가 성립하지 않는다. **이 3번에서 막히는 것은 재설치가 뭔가를 깨뜨린 것이 아니라 발효 중인 훅 버전 불일치다** — 오퍼레이터가 이 3번에서 막혔다고 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것. 먼저 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계를 다시 수행한다.
+   - **2026-08-18 실행 결과 — 해소됨(더 이상 B-06 제약으로 차단되지 않는다)**: 이제 실제로 수행 가능하며 실측으로 통과를 확인했다. 4단계 판정: ①음성 대조(사전) — `general-purpose`를 `model` 없이 호출 → 차단 ②양성 — `explorer-low`를 `model` 없이 호출 → 스폰 성공, transcript에 `model` 키 부재 + 실제 적용 모델 `claude-haiku-4-5-20251001`(frontmatter 핀 그대로) ③양성 2 — `executor-med`를 `model` 없이 호출 → 실제 모델 `claude-sonnet-5` + `effort: "medium"` 확인(model·effort 둘 다 frontmatter대로 적용) ④음성 대조(사후) — 다시 차단 확인. 세부는 [../BACKLOG.md](../BACKLOG.md) B-06 참조.
 
 추가 확인: `grep -rn "delegating-execution" "$DST/.claude"` → 결과 0건(구 명칭 잔존 없음).
 
@@ -144,6 +200,12 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-
 ls -1dt "$HOME/.claude-backups/delegate-first-"* | head -1
 ```
 
+> **경고 — 이 `delegate-first-*` 백업으로 전역 훅·규칙을 롤백하지 말 것(2026-08-18 실측)**: `$HOME/.claude-backups/delegate-first-<stamp>/`는 **이 REINSTALL §1**이 만든 백업이고, 그 안의 `enforce-subagent-model.cjs`·`subagent-model-routing.md` 사본은 **이 재설치를 시작한 시점**의 전역 상태다. 만약 이 재설치보다 **먼저** 별도 절차(예: B-08의 전역 전파)로 전역 훅·규칙이 이미 정본판으로 갱신됐다면, `delegate-first-*` 백업 안의 훅·규칙은 **전파 후 사본** — 즉 정본과 동일 — 이라 롤백 가치가 없다. 이 상태로 아래 롤백 블록의 마지막 두 `cp`를 실행하면 "롤백"이라는 이름으로 오히려 **새 버전을 다시 설치**하게 되어, 전역 롤백이 **실패도 경고도 없이 무효화**된다.
+>
+> 절차를 목적별로 분리한다:
+> - **스킬 트리·tier 에이전트 롤백**(이 프로젝트 로컬 상태 복원): 아래 블록대로 `delegate-first-*` 백업을 쓴다. 이 부분은 항상 유효하다(스킬·에이전트는 이 REINSTALL 절차 밖에서 별도로 전파되는 경로가 없다).
+> - **전역 훅·규칙 롤백**: **전파 직전에 별도로 잡아 둔 백업**(예: `~/.claude-backups/b08-<stamp>/`)에서 복원해야 한다. `delegate-first-*` 백업이 아니다. 어느 백업이 "전파 전"인지 모르면, 파일 내용을 `cmp`로 대조하거나(전역 훅/규칙과 정본 `$SRC`가 byte-identical이면 그 백업은 전파 후 사본일 가능성이 높다) 해당 전파 절차의 기록(예: `BACKLOG.md` B-08)을 먼저 확인한다.
+
 ```bash
 set -euo pipefail
 
@@ -156,11 +218,21 @@ rm -rf "$DST/.claude/skills/delegate-first".new "$DST/.claude/skills/delegate-fi
 rm -rf "$DST/.claude/skills/delegate-first"
 cp -R "$BAK/skills-delegate-first" "$DST/.claude/skills/delegate-first"
 cp -R "$BAK/agents/." "$DST/.claude/agents/"
-cp "$BAK/enforce-subagent-model.cjs" "$HOME/.claude/hooks/" 2>/dev/null
-cp "$BAK/subagent-model-routing.md"  "$HOME/.claude/rules/" 2>/dev/null
+if [ -f "$BAK/enforce-subagent-model.cjs" ]; then
+  cp "$BAK/enforce-subagent-model.cjs" "$HOME/.claude/hooks/"
+  echo "복원함: enforce-subagent-model.cjs"
+else
+  echo "스킵함: enforce-subagent-model.cjs (백업에 소스 없음)"
+fi
+if [ -f "$BAK/subagent-model-routing.md" ]; then
+  cp "$BAK/subagent-model-routing.md" "$HOME/.claude/rules/"
+  echo "복원함: subagent-model-routing.md"
+else
+  echo "스킵함: subagent-model-routing.md (백업에 소스 없음)"
+fi
 ```
 
-**훅/규칙이 원래 없던 환경이었다면**: §1의 두 `cp ... 2>/dev/null` 줄은 원본이 없으면 조용히 아무것도 하지 않는다. 그러면 `$BAK`에도 해당 파일이 없으므로, 위 롤백 블록의 마지막 두 줄도 조용히 아무것도 복원하지 않는다(cp가 소스 부재로 스킵). 이 경우 완전한 원상복구를 위해 롤백 후 아래를 **수동으로** 실행해야 한다:
+**훅/규칙이 원래 없던 환경이었다면**: §1의 두 `cp ... 2>/dev/null` 줄은 원본이 없으면 조용히 아무것도 하지 않는다. 그러면 `$BAK`에도 해당 파일이 없으므로, 위 롤백 블록의 마지막 두 조건문은 소스 부재를 "스킵함" 메시지로 명시적으로 알리고 **exit 0을 유지한 채** 다음 단계로 넘어간다(과거에는 `set -e` 아래에서 `cp`가 소스 부재로 실패해 스크립트 전체가 exit 1로 죽었다 — 이제는 진짜 오류만 스크립트를 중단시킨다). 스킵된 경우 완전한 원상복구를 위해 롤백 후 아래를 **수동으로** 실행해야 한다:
 
 ```bash
 rm -f "$HOME/.claude/hooks/enforce-subagent-model.cjs"

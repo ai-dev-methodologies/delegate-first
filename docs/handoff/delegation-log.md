@@ -10,6 +10,8 @@
 
 이 경로는 프로젝트 파라미터다 — 다른 경로를 쓰는 프로젝트는 `CLAUDE.md`에 명시한다(README 참고).
 
+`model` 컬럼 관례: `(미지정)`은 훅 차단을 의도적으로 유발한 프로브(예: 훅 검증용 무model 호출)를, `(파라미터 생략)`은 `model` 파라미터를 넘기지 않고 tier 에이전트의 frontmatter 값을 그대로 적용받은 정상 호출을 뜻한다. `(파라미터 생략)`인 행은 이 컬럼만으로는 실제 적용 모델을 알 수 없다 — 실제 적용 모델은 `결과` 컬럼에 기록한다(예: "실제 haiku-4-5 적용 확인").
+
 | 날짜 | agent | role | model | effort | 실행경로 | 결과 |
 |---|---|---|---|---|---|---|
 | 2026-08-18 | explorer-low | 훅 차단 프로브(의도적 model 미지정) | (미지정) | (default) | Agent(tier) | blocked-as-designed |
@@ -38,4 +40,7 @@
 | 2026-08-18 | executor-high | P-1 회귀 봉합(잔여 검사 + 양성 테스트 2건) | sonnet | high(frontmatter) | Agent(tier) | pass (test-lint 22/22, 비공허성 확인) |
 | 2026-08-18 | executor-high | B-08 레포 쪽 규칙 예외 문구 작성 | sonnet | high(frontmatter) | Agent(tier) | pass |
 | 2026-08-18 | judge-max | PR#7 릴리스 게이트(전역 규칙 파급 적대 판정) | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (F1 필수, F2~F6) |
-| 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | explorer-low | B-06 end-to-end 실측 양성 프로브(model 파라미터 없이 스폰) | (파라미터 생략) | low(frontmatter, 미기록) | Agent(tier) | pass (실제 haiku-4-5 적용 확인) |
+| 2026-08-18 | executor-med | B-06 effort 적용 확인 프로브(model 없이 스폰) | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (sonnet-5 + effort medium 확인) |
+| 2026-08-18 | executor-high | B-06·B-08 증거 기록 + REINSTALL 결함 봉합 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
