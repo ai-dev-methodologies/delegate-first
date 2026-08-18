@@ -9,7 +9,7 @@
 
 ## B-08 — 전역 훅 갱신 + 규칙 §원칙2 예외 문구 (사용자 승인 필요)
 
-**상태**: 레포 쪽 반영 완료 (2026-08-18, PR #7) · 전역 전파·end-to-end 실측은 메인 세션이 승인받아 수행 중
+**상태**: 해결 (2026-08-18) — 전역 전파 + 실측 완료
 
 **이 항목은 사용자 승인 없이는 진행 불가**임을 명시한다.
 
@@ -19,7 +19,7 @@
 ③ 실측(2026-08-18, `cmp`): 훅(`enforce-subagent-model.cjs`)은 레포본과 전역본이 **이미 다르다**(전역이 구버전) — 이것이 ①이 필요한 이유다. 반면 규칙 파일(`subagent-model-routing.md`)은 레포본과 전역본이 **byte-identical**이다 — 즉 ②를 한쪽만 고치면 지금까지 없던 desync가 새로 생긴다. 따라서 ①과 ②는 **같은 PR/승인 대화에서 동기 갱신**해야 한다.
 ④ 갱신 직후 B-06의 완료 기준(end-to-end 실측: `model` 없는 tier 스폰 통과 + 범용 호출 차단 유지)을 그 자리에서 수행해 B-06을 완결한다.
 
-**진행 상황 (2026-08-18, PR #7)**: 레포 쪽 절반(②)만 반영했다 — `.claude/rules/subagent-model-routing.md` §원칙 2에 예외 문구 추가 + §강제 장치에 tier 5종·린터 포인터 보강. `~/.claude/`는 이 PR 범위 밖(경계 위반 금지)이라 건드리지 않았다. 남은 것: ① 전역 훅 `~/.claude/hooks/enforce-subagent-model.cjs` 갱신 ② 전역 규칙 `~/.claude/rules/subagent-model-routing.md` 갱신(이 PR 머지 후, 레포본과 동기화) ③ B-06 완료 기준 end-to-end 실측 — 세 가지 모두 메인 세션이 사용자 승인과 함께 수행한다.
+**진행 상황 (2026-08-18, PR #7 이후 완료)**: 레포 쪽(②) + 전역 전파(①②) + end-to-end 실측(③) 모두 완료했다. `.claude/rules/subagent-model-routing.md` §원칙 2 예외 문구는 PR #7로 레포에 먼저 반영됐고, 이후 메인 세션이 사용자 승인을 받아 전역 전파를 수행했다: 전파 대상 2파일(`~/.claude/hooks/enforce-subagent-model.cjs`, `~/.claude/rules/subagent-model-routing.md`) 정본 버전으로 갱신, 백업 경로 2개(`~/.claude-backups/b08-20260818-085359/`, `~/.claude-backups/delegate-first-20260818-085619/`) 확보, git 폴백 확인(구 훅=커밋 `568f89d`와 byte-identical, 구 규칙=PR#7 머지 전 `main`과 동일). ③ B-06의 end-to-end 실측 결과는 B-06 항목 참조.
 
 **게이트 체크리스트 (메인 세션이 전역 전파를 수행할 때 그대로 따를 것)**:
 
@@ -57,18 +57,18 @@ Agent 툴 **즉석 호출**(`subagent_type`을 범용 에이전트로 지정)은
 
 ## B-06 — 훅 MODEL_PINNED_TYPES에 tier 에이전트 5종 부재 (문서-강제장치 불일치)
 
-**상태**: 코드 반영 완료 (2026-08-18, PR #2) · end-to-end 실측 대기 (전역 훅 갱신 후) · **우선순위**: 1 (완료)
+**상태**: 해결 (2026-08-18) — end-to-end 실측 완료 · **우선순위**: 1 (완료)
 
 **해소 내용**: `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 각 frontmatter의 model/effort 주석과 함께 추가. `references/routing-matrix.md` §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제를 명시.
 
-**남은 미검증 항목**: 실제 Agent 호출로 `model` 없는 tier 스폰이 통과하는 end-to-end 실측은 **전역 훅(`~/.claude/hooks/`)이 이 버전으로 갱신된 뒤**에만 가능하다 — 전역 갱신은 사용자 승인이 필요한 설치 단계라 이 PR 범위 밖이다. 이 PR에서 확보한 증거는 훅 스크립트 단위 스모크(stdin 주입, `scripts/smoke-hook.sh` 24케이스)까지다. B-08의 전역 전파(①②) 완료 후 실측이 수행되면 이 완료 기준이 충족된다(B-08 참조).
+**end-to-end 실측 완료 (2026-08-18, B-08 전역 전파 후)**: 게이트가 요구한 4단계 판정 프로토콜 그대로 실측했다 — ①음성 대조(사전): `general-purpose`를 `model` 없이 실제 Agent 호출 → **차단**(exit 2 + 라우팅 안내) ②양성: `explorer-low`를 **`model` 파라미터 없이** 호출 → **스폰 성공**. transcript(`agent-a1d72d114318cfa6b.meta.json`)에 `model` 키 **부재**(생략 확인), jsonl의 실제 적용 모델 = **`claude-haiku-4-5-20251001`**(frontmatter 핀 그대로), 도구도 Read/Grep/Glob 제한 유지 ③양성 2: `executor-med`를 `model` 없이 호출 → 실제 모델 **`claude-sonnet-5`** + **`effort: "medium"`** — frontmatter의 model과 effort가 둘 다 적용됨을 transcript로 확인 ④음성 대조(사후): 다시 차단 확인. 관찰: `explorer-low` transcript에는 `effort` 키가 없음(haiku 4.5가 effort를 갖지 않는 모델 특성으로 추정 — 단정하지 않고 B-12에 관찰로 기록).
 
 **해소 전 상태(이력)**: `references/routing-matrix.md` §①은 "tier 에이전트를 `subagent_type`으로 지정하면 예외 — Agent 툴 호출만으로 model+effort 조합이 그대로 적용된다"고 서술한다. 그러나 `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에는 `oh-my-claudecode:*` 계열과 `statusline-setup`만 있고 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 없다. 훅이 등록된 세션에서 tier 에이전트를 `model` 없이 호출하면 **exit 2로 차단**된다(2026-08-18 실측). 강제로 `model`을 넘기면 통과하지만 그 순간 frontmatter의 `model`이 덮어써져(공식 해석 순서: 호출 파라미터 > 정의 frontmatter) "pinned 조합 그대로 적용"이 깨진다. `effort`·`tools`·`disallowedTools`는 유지된다.
 
 **할 일 (완료)**: `MODEL_PINNED_TYPES`에 tier 5종 추가(+ 목록이 스킬 트리와 갈라지지 않게 유지하는 방법 검토), 그리고 routing-matrix.md §①에 "이 예외는 훅의 pinned 목록에 tier 5종이 포함돼 있을 때만 성립한다"는 전제 명시. (목록 드리프트를 기계적으로 잡는 방법 검토는 B-07로 이관.)
 - (선택) 이 항목처럼 `enforce-subagent-model.cjs`를 실제로 수정하는 PR에서는, README의 훅 공급망 서약("`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다")을 훅 파일 헤더 주석에도 복제할지 그 PR에서 함께 판단한다. (참고: 이번 NF-1~NF-8 봉합 PR은 `enforce-subagent-model.cjs`가 원문 바이트 보존 대상이라 건드리지 않았다.)
 
-**완료 기준**: 훅 등록 세션에서 `subagent_type: explorer-low`를 `model` 없이 호출해 **통과**하고, `model` 미지정 범용 호출은 여전히 차단되는 것을 실측으로 확인. — 미충족(위 "남은 미검증 항목" 참조: 전역 훅 갱신 후 end-to-end 실측 대기 중).
+**완료 기준**: 훅 등록 세션에서 `subagent_type: explorer-low`를 `model` 없이 호출해 **통과**하고, `model` 미지정 범용 호출은 여전히 차단되는 것을 실측으로 확인. — **충족 (2026-08-18)**, 위 "end-to-end 실측 완료" 참조.
 
 ---
 
@@ -190,3 +190,15 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 **확인 방법**: 해당 세션 transcript에서 실제 적용된 effort 값을 확인한다 — `~/.claude/projects/<세션>/subagents/agent-*.meta.json` 파일의 `effort` 필드, 또는 세션 jsonl 로그에서 `"effort"` 키 값을 grep해 named 스폰과 표준 스폰을 대조한다.
 
 **할 일(미착수)**: 추가 named 스폰 사례를 수집해 표본을 늘리고, 재현되면 원인(in_process_teammate 경로가 frontmatter effort를 무시하는지, 파라미터 전달 버그인지)을 좁힌다. 재현 안 되면 관찰을 폐기하거나 "1회성 이상현상"으로 하향한다.
+
+**2026-08-18 관찰 추가 (표준 스폰, named 스폰과는 별개)**: B-06 end-to-end 실측 중 표준 스폰(named 파라미터 없이) 2건을 비교했다 — `explorer-low`(haiku) transcript에는 `effort` 키가 아예 없었고, `executor-med`(sonnet) transcript에는 `"effort":"medium"`이 있었다. haiku 계열이 effort를 갖지 않는 모델 특성일 가능성이 있으나, 표본이 1쌍뿐이라 **관찰로만** 기록하고 단정하지 않는다. 위 named 스폰 이상현상과는 다른 축(model 계열 vs 호출 경로)이므로 혼동하지 말 것.
+
+---
+
+## B-13 — REINSTALL 스왑이 정본에 없는 파일을 삭제하던 결함(수정됨)의 회귀 방지
+
+**상태**: 해결(이 PR) + 후속 검토
+
+`docs/REINSTALL.md` §3의 copy-to-temp-then-swap 절차는 `$NEW`에 정본이 제공하는 파일(SKILL.md·references/)만 채운 뒤 기존 트리를 통째로 교체한다 — 이 성질상 정본에 없는 기존 파일(예: HANDOFF.md, NEW-REPO-PROMPT.md)은 스왑과 동시에 조용히 사라진다. 같은 절 바로 아래 문단은 "삭제는 이 절차에서 자동으로 하지 않는다"고 서술했지만, 절차 자체는 그 문단과 모순되게 두 파일을 실제로 지웠을 것이다. 2026-08-18 goone-rest 재설치 실행 중 이 결함이 발견됐고, 그 자리에서 두 파일을 `$NEW`로 승계하는 방식으로 교정해 실행했다(재설치 자체는 완료, goone-rest에 두 파일 보존 확인). 이번 PR은 §3 절차에 "정본이 제공하지 않는 기존 파일은 전부 승계"하는 단계를 명시해 문서와 실행을 일치시켰다.
+
+**후속 검토**: 이 절차는 스크립트가 아니라 사람이 복붙하는 bash 블록이라 린트 대상이 아니다 — 문서를 아무리 정확히 고쳐도 다음 실행자가 그대로 복붙하지 않으면 같은 사고가 재발할 수 있다. REINSTALL 절차를 `scripts/reinstall.sh`로 스크립트화해 승계·검증·롤백을 코드로 강제할지는 후속 검토 사항이다(트리거는 B-04와 동일 — 설치 대상이 3곳을 넘어갈 때 함께 판단).

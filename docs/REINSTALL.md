@@ -108,6 +108,20 @@ rm -rf "$NEW"
 mkdir -p "$NEW"
 cp "$SRC/.claude/skills/delegate-first/SKILL.md" "$NEW/SKILL.md"
 cp -R "$SRC/.claude/skills/delegate-first/references" "$NEW/"
+
+# 이관 문서 승계 — $DST의 기존 트리에서 SKILL.md·references/ 외의 파일(예: HANDOFF.md,
+# NEW-REPO-PROMPT.md)을 전부 $NEW로 복사한다. 이름을 하드코딩해 나열하지 않는 이유:
+# 다음에 다른 파일이 생겨도 안전하도록 "정본이 제공하지 않는 기존 파일은 전부 승계"하는
+# 형태로 둔다.
+# 근거: 스왑은 디렉터리를 통째로 교체하므로, 이 단계 없이는 정본이 제공하지 않는 기존
+# 파일이 조용히 사라진다 — 2026-08-18 goone-rest 재설치 실행 중 HANDOFF.md·
+# NEW-REPO-PROMPT.md가 이 결함으로 삭제될 뻔했고, 그 자리에서 승계 방식으로 교정했다.
+if [ -d "$DST/.claude/skills/delegate-first" ]; then
+  find "$DST/.claude/skills/delegate-first" -mindepth 1 -maxdepth 1 \
+    ! -name SKILL.md ! -name references \
+    -exec cp -R {} "$NEW/" \;
+fi
+
 # (여기서 $NEW 내용을 눈으로 확인하고 싶으면 다음 줄 실행 전에 멈춰도 된다)
 rm -rf "$OLD"
 mv "$DST/.claude/skills/delegate-first" "$OLD"
@@ -124,13 +138,16 @@ cp "$SRC/.claude/rules/subagent-model-routing.md" "$HOME/.claude/rules/"
 cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"
 ```
 
-**HANDOFF.md / NEW-REPO-PROMPT.md 처리**: 이 2개는 로컬 스킬 디렉터리에 남아 있는 이관용 문서다. 정본 레포가 `docs/HANDOFF-2026-08-17.md`로 이력을 보존하므로 로컬에서는 삭제 가능하지만, **삭제는 이 절차에서 자동으로 하지 않는다** — 사용자 확인 후 별도로 지운다(스킬 로딩에는 영향 없음).
+**HANDOFF.md / NEW-REPO-PROMPT.md 처리**: 이 2개는 로컬 스킬 디렉터리에 남아 있는 이관용 문서다. 위 승계 단계가 이 둘을 포함해 정본이 제공하지 않는 기존 파일 전체를 자동으로 `$NEW`로 이관하므로, **스왑 자체로는 삭제되지 않는다**. 정본 레포가 `docs/HANDOFF-2026-08-17.md`로 이력을 보존하므로 로컬에서는 삭제해도 무방하지만, **삭제는 이 절차에서 자동으로 하지 않는다** — 지우고 싶으면 스왑 후 사용자 확인을 거쳐 별도로 지운다(스킬 로딩에는 영향 없음).
 
 ## 4. 검증 3단계 (재설치 후 필수)
 
 1. **스킬 로드** — goone-rest 세션에서 `/delegate-first` 호출 → `SKILL.md` 본문이 로드되고 3단계 문구가 **파라미터 표현**으로 바뀐 것을 확인.
+   - **2026-08-18 실행 결과**: 파일 내용으로 확인 완료 — `SKILL.md`에 파라미터 표현("for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead")과 `## Idle recovery` 절(타임박스·폴링 만료 감지·재위임)이 goone-rest 로컬 사본에 반영된 것을 확인했다.
 2. **훅 차단 스모크** — `model` 없이 Agent 즉석 호출 → exit 2 차단 + 라우팅 안내 stderr 확인. (§0의 "훅 등록 위치" 확인을 먼저 통과해야 이 스모크의 결과를 해석할 수 있다.)
+   - **2026-08-18 실행 결과**: 전역 훅 대상 `scripts/smoke-hook.sh` 스모크 24/24 PASS + 실제 Agent 호출로 범용 타입(`general-purpose`)을 `model` 없이 호출 → exit 2 차단(라우팅 안내 포함) 확인.
 3. **tier 에이전트 스폰** — `subagent_type: explorer-low` 1회 호출 → haiku/low 적용 확인. **B-06([../BACKLOG.md](../BACKLOG.md), 정본 레포 PR #2)이 해소되었으므로, §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 수행한 뒤에는 이 3번이 수행 가능하다.** `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 이제 등록돼 있어, `model` 없이 tier를 호출해도 통과한다. 단 §3의 훅 전파 단계를 건너뛰었거나 전역(`~/.claude/hooks/`)에 tier 5종이 없는 구 버전이 남아 있으면 여전히 exit 2로 차단된다 — 우회하려고 `model`을 넘기면 통과는 하지만 그 순간 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합이 그대로 적용됐는지"를 검증한다는 3번의 목적 자체가 성립하지 않는다. **이 3번에서 막히는 것은 재설치가 뭔가를 깨뜨린 것이 아니라 발효 중인 훅 버전 불일치다** — 오퍼레이터가 이 3번에서 막혔다고 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것. 먼저 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계를 다시 수행한다.
+   - **2026-08-18 실행 결과 — 해소됨(더 이상 B-06 제약으로 차단되지 않는다)**: 이제 실제로 수행 가능하며 실측으로 통과를 확인했다. 4단계 판정: ①음성 대조(사전) — `general-purpose`를 `model` 없이 호출 → 차단 ②양성 — `explorer-low`를 `model` 없이 호출 → 스폰 성공, transcript에 `model` 키 부재 + 실제 적용 모델 `claude-haiku-4-5-20251001`(frontmatter 핀 그대로) ③양성 2 — `executor-med`를 `model` 없이 호출 → 실제 모델 `claude-sonnet-5` + `effort: "medium"` 확인(model·effort 둘 다 frontmatter대로 적용) ④음성 대조(사후) — 다시 차단 확인. 세부는 [../BACKLOG.md](../BACKLOG.md) B-06 참조.
 
 추가 확인: `grep -rn "delegating-execution" "$DST/.claude"` → 결과 0건(구 명칭 잔존 없음).
 

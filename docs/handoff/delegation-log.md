@@ -38,4 +38,7 @@
 | 2026-08-18 | executor-high | P-1 회귀 봉합(잔여 검사 + 양성 테스트 2건) | sonnet | high(frontmatter) | Agent(tier) | pass (test-lint 22/22, 비공허성 확인) |
 | 2026-08-18 | executor-high | B-08 레포 쪽 규칙 예외 문구 작성 | sonnet | high(frontmatter) | Agent(tier) | pass |
 | 2026-08-18 | judge-max | PR#7 릴리스 게이트(전역 규칙 파급 적대 판정) | fable | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (F1 필수, F2~F6) |
-| 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-18 | executor-high | F1~F6 봉합 + REINSTALL §2 갱신 | sonnet | high(frontmatter) | Agent(tier) | pass |
+| 2026-08-18 | explorer-low | B-06 end-to-end 실측 양성 프로브(model 파라미터 없이 스폰) | (파라미터 생략) | low(frontmatter, 미기록) | Agent(tier) | pass (실제 haiku-4-5 적용 확인) |
+| 2026-08-18 | executor-med | B-06 effort 적용 확인 프로브(model 없이 스폰) | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (sonnet-5 + effort medium 확인) |
+| 2026-08-18 | executor-high | B-06·B-08 증거 기록 + REINSTALL 결함 봉합 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
