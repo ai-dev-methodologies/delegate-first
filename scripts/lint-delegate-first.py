@@ -181,6 +181,13 @@ def build_name_index(agent_files: list, findings: list) -> dict:
 
 SET_START_RE = re.compile(r"new\s+Set\(\s*\[")
 MAP_START_RE = re.compile(r"TIER_EXPECTED_MODEL\s*=\s*\{")
+# C7: 종결자는 세미콜론 유무와 무관하게 인식한다(`]);`와 `])`, `};`와 `}`
+# 모두). 예전엔 리터럴 문자열 "]);"/"};" 서브스트링만 찾았는데, Prettier
+# `semi:false` 스타일(세미콜론 없음)로 포매팅되면 이 레포의 실제 포매팅과
+# 달라져 종결자를 영원히 못 찾고 파일 나머지 전체를 항목으로 오추출해
+# FAIL 폭포를 냈다(실측). 세미콜론은 선택적으로만 소비한다.
+CLOSE_SET_RE = re.compile(r"\]\s*\)\s*;?")
+CLOSE_MAP_RE = re.compile(r"\}\s*;?")
 STRING_LITERAL_RE = re.compile(r"""(['"`])((?:(?!\1).)*)\1""")
 IDENT_RE = re.compile(r"^[A-Za-z0-9:_.-]+$")
 # key(따옴표 리터럴): value(나머지 전부) — value는 이미 top-level comma로
@@ -371,9 +378,9 @@ def extract_pinned_types(hook_path: Path) -> tuple[list, list]:
             else:
                 continue
 
-        close_idx = code_line.find("]);")
-        if close_idx != -1:
-            _scan_entries(code_line[:close_idx], i, entries, findings, hook_path)
+        close_m = CLOSE_SET_RE.search(code_line)
+        if close_m:
+            _scan_entries(code_line[:close_m.start()], i, entries, findings, hook_path)
             in_block = False
             closed = True
             break
@@ -382,8 +389,8 @@ def extract_pinned_types(hook_path: Path) -> tuple[list, list]:
     if in_block and not closed:
         findings.append(Finding(
             "FAIL", hook_path, None,
-            "MODEL_PINNED_TYPES Set 블록이 파일 끝까지 닫히지 않음"
-            "(']);' 종결자를 찾지 못함) — 파싱 실패"))
+            "MODEL_PINNED_TYPES Set 블록이 닫히지 않았다 — 파일 끝까지 "
+            "']'+')' 종결자(세미콜론 유무 무관: '])' 또는 ']);')를 찾지 못함 — 파싱 실패"))
 
     return entries, findings
 
@@ -416,9 +423,9 @@ def extract_tier_expected_model(hook_path: Path) -> tuple:
             else:
                 continue
 
-        close_idx = code_line.find("};")
-        if close_idx != -1:
-            _scan_map_entries(code_line[:close_idx], i, entries, findings, hook_path)
+        close_m = CLOSE_MAP_RE.search(code_line)
+        if close_m:
+            _scan_map_entries(code_line[:close_m.start()], i, entries, findings, hook_path)
             in_block = False
             closed = True
             break
@@ -427,8 +434,8 @@ def extract_tier_expected_model(hook_path: Path) -> tuple:
     if in_block and not closed:
         findings.append(Finding(
             "FAIL", hook_path, None,
-            "TIER_EXPECTED_MODEL 객체 블록이 파일 끝까지 닫히지 않음"
-            "('};' 종결자를 찾지 못함) — 파싱 실패"))
+            "TIER_EXPECTED_MODEL 객체 블록이 닫히지 않았다 — 파일 끝까지 "
+            "'}' 종결자(세미콜론 유무 무관: '}' 또는 '};')를 찾지 못함 — 파싱 실패"))
 
     return entries, findings
 

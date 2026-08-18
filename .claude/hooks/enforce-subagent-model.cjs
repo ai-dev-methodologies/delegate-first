@@ -20,7 +20,12 @@
  *     MODEL_PINNED_TYPES).
  *   - 그 외 model 미지정 → exit 2 로 차단하고 라우팅 지침을 돌려준다.
  *   - break-glass(사람 전용): env ALLOW_INHERITED_SUBAGENT_MODEL=1
- *     (model 미지정 자체를 전부 허용 — 기존 동작)
+ *     (model 미지정 자체를 전부 허용 — 기존 동작). 이 스위치는 "model이
+ *     없는" 경로에서만 평가된다 — model이 있는데 tier 기대값과 다른
+ *     경우(아래 ALLOW_TIER_MODEL_OVERRIDE의 영역)는 이 스위치로 우회되지
+ *     않는다(F-5: 예전엔 이 검사가 함수 진입 직후 최상단에 있어 두
+ *     break-glass가 사실상 하나로 합쳐져 있었다 — B-11 값 검증까지 통째로
+ *     무력화했다. 지금은 아래 "model 없음" 분기 안에서만 평가한다).
  *   - break-glass(사람 전용, B-11 신설): env ALLOW_TIER_MODEL_OVERRIDE=1
  *     (tier의 model 값 불일치만 허용 — 의도적으로 다른 model을 쓰고 싶은
  *     경우, 예: judge-max를 실험적으로 opus로 낮춰 비용 비교). 이 값은
@@ -115,7 +120,6 @@ const TIER_EXPECTED_MODEL = {
 let raw = "";
 process.stdin.on("data", (chunk) => (raw += chunk));
 process.stdin.on("end", () => {
-  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
   let input;
   try {
     input = JSON.parse(raw);
@@ -153,6 +157,10 @@ process.stdin.on("end", () => {
     process.exit(0);
   }
 
+  // model 미지정 경로 — ALLOW_INHERITED_SUBAGENT_MODEL은 여기서만 평가한다
+  // (F-5: tier 값 불일치 차단은 위 분기에서 이미 끝났으므로 이 지점에
+  // 도달하지 않는다 — 이 break-glass가 B-11 값 검증을 우회할 수 없다).
+  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
   if (MODEL_PINNED_TYPES.has(subagentType)) process.exit(0);
   process.stderr.write(
     [

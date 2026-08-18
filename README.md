@@ -24,7 +24,12 @@ SKILL.md (원칙 + 5단계 체크리스트)
               ↑ routing-matrix.md가 이 5종의 model+effort 조합을 가리킴
               ↑ 강제(기계적 차단)
         PreToolUse 훅: enforce-subagent-model.cjs
-              (matcher: Agent — tool_input.model 없으면 exit 2로 차단)
+              (matcher: Agent — tool_input.model 없으면 exit 2로 차단.
+               tier 호출에 model을 넘기면 그 tier의 고정값과 정확히
+               일치해야 통과 — 별칭 exact match, 대소문자·전체 모델 ID
+               불가, 불일치는 exit 2. 생략이 권장. break-glass 2종:
+               ALLOW_INHERITED_SUBAGENT_MODEL=1(model 미지정 차단 우회) /
+               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회), B-11)
               ↑ 정책 근거
         글로벌 규칙: subagent-model-routing.md
 ```
@@ -49,7 +54,9 @@ SKILL.md (원칙 + 5단계 체크리스트)
 ├── scripts/
 │   ├── smoke-hook.sh                  (훅 회귀 스모크)
 │   ├── lint-delegate-first.py         (B-07+B-02+B-09+B-11 린터)
-│   └── test-lint.sh                   (린터 자체 회귀망)
+│   ├── test-lint.sh                   (린터 자체 회귀망)
+│   ├── reinstall.sh                   (REINSTALL.md 절차 실행본, 파괴적, --dry-run 지원)
+│   └── test-reinstall.sh              (reinstall.sh 회귀 테스트)
 ├── .githooks/pre-commit               (린터+린터 회귀망+스모크 게이트, 옵트인)
 ├── .gitignore
 ├── BACKLOG.md
@@ -132,7 +139,9 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 - `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
 - `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 22건 + 음성(PASS 기대) 4건, 실측 ~1초.
 - `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
-- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 세 스크립트가 자동 실행된다(자동 설치되지 않음).
+- `bash scripts/reinstall.sh [--dry-run]` — [docs/REINSTALL.md](docs/REINSTALL.md) §3 절차(정본 → 프로젝트 로컬 재설치)를 실행하는 스크립트. **파괴적**(대상 프로젝트 트리를 교체)이므로 실행 전 `--dry-run`으로 먼저 확인할 것. 전역(`~/.claude/`) 전파는 기본 비활성 — 별도 단계로 명시 실행해야 한다.
+- `bash scripts/test-reinstall.sh` — `reinstall.sh`의 회귀 테스트(스크래치 사본에서 실행, 부작용 없음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 린터·린터 회귀망·훅 스모크가 자동 실행된다(자동 설치되지 않음).
 
 ## 원칙 요약
 

@@ -91,6 +91,15 @@ run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + general-purpose, model 없음(여전히 
   '{"tool_input":{"subagent_type":"general-purpose"}}' 2 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
 
+# --- F-5: ALLOW_INHERITED_SUBAGENT_MODEL=1은 "model 미지정" 경로에만 적용된다 —
+# tier 값 불일치(위 B-11 차단)까지 우회해서는 안 된다. 이전엔 이 검사가
+# 함수 최상단에서 무조건 exit 0 했기 때문에 이 케이스가 (잘못) 0을
+# 반환했다 — 지금은 2여야 한다(두 break-glass가 실제로 분리돼 있음을
+# 회귀로 고정).
+run_case "ALLOW_INHERITED_SUBAGENT_MODEL=1 + judge-max + model opus(불일치 → 여전히 차단, F-5)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+
 # --- subagent_type 자체가 없음 ---
 run_case "subagent_type 없음, model 없음" '{"tool_input":{}}' 2
 
@@ -111,6 +120,15 @@ run_case "__proto__ 프로토타입 오염 시도" '{"tool_input":{"__proto__":{
 run_case "model 숫자" '{"tool_input":{"subagent_type":"general-purpose","model":123}}' 2
 run_case "model 배열" '{"tool_input":{"subagent_type":"general-purpose","model":["sonnet"]}}' 2
 run_case "model bool" '{"tool_input":{"subagent_type":"general-purpose","model":true}}' 2
+
+# --- C10: tier + model 형식 변형 — 별칭 exact match(대소문자·전체 ID
+# 불일치는 차단), trim은 적용(앞뒤 공백은 제거 후 비교)됨을 회귀로 고정 ---
+run_case "C10: judge-max + model FABLE(대문자, 불일치 → 차단)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"FABLE"}}' 2
+run_case "C10: judge-max + model claude-fable-5(전체 ID, 불일치 → 차단)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"claude-fable-5"}}' 2
+run_case "C10: judge-max + model \" fable\"(앞 공백, trim 후 일치 → 통과)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":" fable"}}' 0
 
 # --- 파싱 불가/빈 stdin: 설계된 fail-open ---
 run_case "비JSON stdin" 'not json {' 0

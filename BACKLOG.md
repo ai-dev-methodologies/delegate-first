@@ -194,15 +194,15 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 
 **상태**: 해결 (2026-08-18, PR #9) — 관찰이 실측으로 확정됐다. named 스폰(`taskKind: in_process_teammate`)은 **model은 frontmatter 적용, effort는 미적용**(executor-med medium→high, explorer-low low→max). SKILL.md·routing-matrix·전역 규칙 3곳 문면을 정정했다. haiku 계열의 effort 적용 여부는 transcript에 키가 없어 **판정 불가**로 남겼다. · **우선순위**: 3
 
-게이트가 관찰한 반례 1건: `name` 파라미터를 동반한 스폰(in_process_teammate 경로로 추정)에서 `explorer-low`가 정의 frontmatter의 `effort: low`가 아니라 `effort: max`로 실행됐다. 같은 세션의 형제 표준 스폰(named 없이) 3건은 frontmatter effort를 그대로 유지했다.
+**최초 관찰 (override 동반 프로브)**: `name` 파라미터를 동반한 스폰(in_process_teammate 경로로 추정)에서 `explorer-low`가 정의 frontmatter의 `effort: low`가 아니라 `effort: max`로 실행됐다. 단 이 프로브는 `model`도 함께 override했으므로, low→max가 named 스폰 단독 효과인지 override 혼입 효과인지 이 사례만으로는 분리되지 않는다. 같은 세션의 형제 표준 스폰(named 없이) 3건은 frontmatter effort를 그대로 유지했다.
 
-표본이 **1건**이므로 이것을 일반 규칙("named 스폰은 항상 effort를 안 지킨다")으로 단정하지 않는다 — 재현·표본 확대가 필요한 **관찰**로만 기록한다.
+**확정 (override 없는 재현 프로브)**: 위 혼입을 분리하기 위해 named 스폰(override 없음) 2건으로 재검증했다(delegation-log `B-12 변수분리 프로브`·`B-12 named 스폰 프로브` 행 참조). `executor-med`(sonnet)는 override 없이도 medium→high로 재현돼 named 스폰의 effort 미유지가 **확정**됐다. `explorer-low`(haiku)는 transcript에 `effort` 키 자체가 없어 미유지 여부를 이 경로로는 **판정 불가**로 남는다(haiku 계열이 effort를 아예 갖지 않는 모델 특성일 가능성 — 관찰로만 기록, 단정하지 않음). 따라서 결론의 근거는 override 없는 clean 표본인 executor-med 1건이고, 최초의 low→max(explorer-low) 관측은 override 혼입 표본이라 별도 근거로 쓰지 않는다. SKILL.md·routing-matrix·전역 규칙 3곳 문면은 이 확정 결과로 정정했다.
 
 **확인 방법**: 해당 세션 transcript에서 실제 적용된 effort 값을 확인한다 — `~/.claude/projects/<세션>/subagents/agent-*.meta.json` 파일의 `effort` 필드, 또는 세션 jsonl 로그에서 `"effort"` 키 값을 grep해 named 스폰과 표준 스폰을 대조한다.
 
-**할 일(미착수)**: 추가 named 스폰 사례를 수집해 표본을 늘리고, 재현되면 원인(in_process_teammate 경로가 frontmatter effort를 무시하는지, 파라미터 전달 버그인지)을 좁힌다. 재현 안 되면 관찰을 폐기하거나 "1회성 이상현상"으로 하향한다.
+**남은 불확실성**: haiku 계열의 effort 적용 여부는 여전히 판정 불가(transcript에 키 없음). low→max 관측은 override 혼입이라 named 스폰 단독 효과로 재확인되지 않았다 — 필요하면 `ALLOW_TIER_MODEL_OVERRIDE=1`로 override를 재현한 뒤 named-only 대조가 추가로 필요하다.
 
-**2026-08-18 관찰 추가 (표준 스폰, named 스폰과는 별개)**: B-06 end-to-end 실측 중 표준 스폰(named 파라미터 없이) 2건을 비교했다 — `explorer-low`(haiku) transcript에는 `effort` 키가 아예 없었고, `executor-med`(sonnet) transcript에는 `"effort":"medium"`이 있었다. haiku 계열이 effort를 갖지 않는 모델 특성일 가능성이 있으나, 표본이 1쌍뿐이라 **관찰로만** 기록하고 단정하지 않는다. 위 named 스폰 이상현상과는 다른 축(model 계열 vs 호출 경로)이므로 혼동하지 말 것.
+**2026-08-18 관찰 (표준 스폰, named 스폰과는 별개)**: B-06 end-to-end 실측 중 표준 스폰(named 파라미터 없이) 2건을 비교했다 — `explorer-low`(haiku) transcript에는 `effort` 키가 아예 없었고, `executor-med`(sonnet) transcript에는 `"effort":"medium"`이 있었다. haiku 계열이 effort를 갖지 않는 모델 특성일 가능성이 있으나, 표본이 1쌍뿐이라 **관찰로만** 기록하고 단정하지 않는다. 위 named 스폰 이상현상과는 다른 축(model 계열 vs 호출 경로)이므로 혼동하지 말 것.
 
 ---
 
