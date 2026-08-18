@@ -8,20 +8,15 @@
 2. **모든 Agent(서브에이전트) 호출은 `model`을 명시한다 — 세션 모델 상속 금지.**
    추론강도(effort)를 지원하는 경로(Workflow `agent()` 등)에서는 effort도 명시한다.
    - **예외**: frontmatter에 `model`이 고정된 tier 에이전트를 `subagent_type`으로
-     지정하는 호출은 `model` **생략이 원칙**이다 — ① 세션 상속이 아니라 정의값을
-     쓰므로 이 규칙의 목적(상속 금지)을 위반하지 않고, ② 파라미터를 넘기면 정의의
-     `model`을 덮어쓰는데 훅은 값을 검증하지 않아 상위 티어가 하위로 조용히
-     강등될 수 있다(예: `judge-max`에 `opus`). 단 **등록된 모든 PreToolUse Agent
-     훅 사본**(프로젝트·전역)의 pinned 목록에 그 tier가 있을 때만 성립 — 누락된
-     사본이 있으면 exit 2로 차단되며, 그때 폴백은 해당 tier의 frontmatter
-     `model` 값을 그대로 명시하는 것이다. `effort`·`tools`·`disallowedTools`는
-     override와 무관하게 유지된다.
-     이 예외는 delegate-first 정본·설치 프로젝트의 **tier 5종**(§강제 장치
-     목록)에 한한다. 다른 프로젝트에서 **동명 에이전트가 보이더라도** 그
-     정의의 frontmatter `model` 핀을 **직접 확인하기 전에는** 예외를 적용하지
-     말고 원칙(명시)대로 한다 — 이 규칙은 전 프로젝트 세션에 주입되지만
-     훅은 이름만 보고 값은 검증하지 않으므로, 이름이 같다는 사실만으로는
-     그 프로젝트의 동명 에이전트가 model이 고정돼 있다는 보장이 없다.
+     지정하는 호출은 `model` **생략이 원칙**이다 — 세션 상속이 아니라 정의값을
+     쓰므로 규칙 목적(상속 금지)을 위반하지 않는다. 값을 명시하면 그 tier의
+     고정값과 **정확히 일치**해야 통과하고, 불일치는 **exit 2 차단**이다(B-11).
+     이 예외는 **등록된 모든 훅 사본**의 pinned 목록에 그 tier가 있을 때만
+     성립하며, delegate-first **tier 5종**에 한한다 — 동명 에이전트는
+     frontmatter 핀을 **직접 확인하기 전에는** 원칙(명시)대로 한다.
+     `tools`·`disallowedTools`는 유지되고, `effort`는 일반 스폰에서만
+     유지되며 named 스폰에서는 유지되지 않는다. 증거 상세는
+     `references/routing-matrix.md` §① 참조.
 3. 라우팅 기준 (글로벌 CLAUDE.md OMO 정책과 동일):
    - 탐색·파일검색·단순집계·기계적 편집 → `haiku`/`sonnet`
    - 일반 구현·보통 디버깅·리뷰 1차·문서 구조화 → `sonnet`
@@ -39,8 +34,9 @@
   않게 **정본 레포 사본에 한해** `scripts/lint-delegate-first.py`가 대조
   검사한다 — 전파된 전역 훅 사본과 각 설치 프로젝트 `agents/` 사이의
   드리프트를 잡는 자동 검사는 없다).
-- break-glass는 사람 전용: `ALLOW_INHERITED_SUBAGENT_MODEL=1`.
-  Claude는 이 변수를 스스로 설정하지 않는다.
+- break-glass는 사람 전용 2종: `ALLOW_INHERITED_SUBAGENT_MODEL=1`(model 미지정
+  차단을 우회) / `ALLOW_TIER_MODEL_OVERRIDE=1`(tier 값 불일치 차단을 우회, B-11).
+  Claude는 이 변수들을 스스로 설정하지 않는다.
 
 ## 근거
 - 2026-07-16 사용자 지시: "메인은 fable5 max 추론이라 엄청난 토큰 사용 —

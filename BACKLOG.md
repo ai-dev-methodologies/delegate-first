@@ -28,7 +28,7 @@
 - **(c) 판정 기준 — 4단계, 순서 고정**:
   1. **음성 대조 먼저**: 범용 타입(`subagent_type`을 tier가 아닌 일반 에이전트로) `model` 없이 호출 → 여전히 exit 2로 차단되는지 확인. **여기서 통과(차단 안 됨)하면 훅 미등록 또는 env 누출**이므로 즉시 중단하고 원인을 먼저 잡는다 — 이 경우 아래 양성 결과는 전부 무효(훅이 아예 안 걸린 상태에서 나온 "성공"이므로).
   2. **양성**: tier(예: `explorer-low`) `model` 없이 호출 → 스폰 성공(차단 없음).
-  3. **스폰 성공만으로 합격 처리하지 말 것** — transcript(`~/.claude/projects/<세션>/subagents/agent-*.meta.json`, 또는 세션 jsonl)에서 실제로 적용된 `model`이 그 tier의 frontmatter 값(예: haiku)과 일치하고 `effort`가 frontmatter 값(예: low)과 일치하는지 확인한다. 값 검증 없이는 "차단 안 됨 = 정확한 model/effort 적용"을 보장할 수 없다(훅은 값 자체를 검증하지 않는다 — B-11 참고).
+  3. **스폰 성공만으로 합격 처리하지 말 것** — transcript(`~/.claude/projects/<세션>/subagents/agent-*.meta.json`, 또는 세션 jsonl)에서 실제로 적용된 `model`이 그 tier의 frontmatter 값(예: haiku)과 일치하고 `effort`가 frontmatter 값(예: low)과 일치하는지 확인한다. 값 검증 없이는 "차단 안 됨 = 정확한 model/effort 적용"을 보장할 수 없다(**model 미지정 호출**에서는 실제 적용값을 훅이 볼 수 없다 — B-11 이후에도 이 경로는 그대로다; B-11이 추가한 값 검증은 model이 지정된 호출에 한정된다. B-11 참고).
   4. **사후 음성 재확인**: 양성 확인 후 다시 한번 범용 무model 호출을 시도해 차단이 여전히 살아 있는지 재확인(전파 과정에서 화이트리스트가 의도치 않게 넓어지지 않았는지).
 - **백업**: (a)(b)는 `docs/REINSTALL.md`가 정의한 절차 밖의 **ad-hoc 복사**다 — REINSTALL §1의 백업 스텝이 자동으로 커버하지 않으므로 별도 백업이 필수다. git 폴백도 존재한다: 구 전역 훅은 정본 레포 커밋 `568f89d`(PR#1, 최초 이관) 시점의 레포본과 byte-identical, 구 전역 규칙은 현재 `main`(이 PR #7 머지 전)과 동일 — 둘 다 필요시 `git show 568f89d:.claude/hooks/enforce-subagent-model.cjs` / `git show main:.claude/rules/subagent-model-routing.md`로 복원 가능하다.
 - **주의(REINSTALL §5 참고)**: 이 전파(①②) 이전의 구 전역 훅·규칙은 `~/.claude-backups/b08-20260818-085359/`에만 있다. REINSTALL §5가 안내하는 `ls -1dt "$HOME/.claude-backups/delegate-first-"* | head -1` 탐색 명령으로는 이 백업을 찾을 수 없다(이름 패턴이 다르다) — `delegate-first-*` 백업의 훅·규칙 사본은 이 전파 **이후**에 만들어졌다면 이미 정본판이라 전역 롤백 가치가 없다.
@@ -128,6 +128,8 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 **트리거**: 설치 대상 프로젝트가 3곳을 넘어가면 복사 방식의 드리프트 비용이 플러그인 작성 비용을 넘는다.
 
+**보류 근거 (2026-08-18)**: 트리거(설치처 3곳 초과) 미도달(현재 2곳)이고, 지금 플러그인화하면 `subagent_type`이 `delegate-first:*`로 바뀌어 훅 pinned 목록·**B-11의 기대값 map**·린터 네임스페이스 처리·전역 전파·설치처 재설치를 전부 다시 돌려야 한다(방금 맞춘 3자 동기화를 이득 없이 흔든다).
+
 **리스크**: 플러그인화하면 `subagent_type`이 `delegate-first:executor-high` 형태로 바뀌어 현행 훅 pinned 목록(`enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`, 비수식 일반명만 등록)에서 **차단된다**(실측 확인). 따라서 B-04는 훅 pinned 목록 네임스페이스 갱신 PR을 반드시 동반해야 하며, 안 하면 B-06이 새 이름(`delegate-first:*`)으로 재발한다.
 
 플러그인화로 tier 이름이 `delegate-first:*`가 되면 **린터 Check A(B-07)의 정방향 fail-open 검출(pinned↔frontmatter model 정합성)은 조용히 사라진다** — 린터는 `:`가 든 네임스페이스 항목을 "이 레포 밖 정의"로 보고 정방향 검사에서 면제하기 때문이다(`scripts/lint-delegate-first.py`의 `if ":" in name: continue`, 실측: 비수식명이면 FAIL 1/exit 1인 fail-open이 `delegate-first:*`로 바꾸면 FAIL 0/exit 0으로 사라짐). 다만 완전한 무출력은 아니다 — 역방향 검사("agents/에 있지만 pinned 목록엔 없음")가 대신 **WARN**을 내고 `--strict`에서는 exit 1이 된다(실측 확인, WARN이라 기본 모드에선 커밋을 막지 못함). 즉 실질은 "FAIL이 WARN으로 강등"이다. B-04는 훅 pinned 목록 갱신 + 린터의 네임스페이스 처리 갱신을 **함께** 해야 한다.
@@ -144,7 +146,11 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 ## B-09 — 훅 Set 리터럴 파서: 문자열 연결·비-정적 리터럴은 여전히 못 잡음
 
-**상태**: 미착수 · **우선순위**: 5
+**상태**: 해결 (2026-08-18, PR #9) — 파서를 무한 확장하는 대신 **정적 문자열 리터럴이 아니면 FAIL**로 표면화. 문자열 연결·템플릿 보간 항목을 FAIL로 잡고, `TIER_EXPECTED_MODEL` map ↔ pinned Set ↔ agents frontmatter **3자 교차 검증**을 추가. 범위가 "모든 JS 형태 파싱"이 아니라 "정적이 아니면 표면화"로 바뀌었음을 명시. · **우선순위**: 5
+
+**해소 내용(범위 정정, 과대 라벨 금지)**: "모든 JS 형태를 파싱한다"가 아니라 "항목 전체가 정적 문자열 리터럴 하나가 아니면 FAIL로 표면화해 사람이 확인하게 한다"로 범위를 좁혀 해소했다 — `_scan_entries`를 조각 단위 finditer 추출에서 `split_top_level_commas`(따옴표 밖 콤마로 항목 분리) + 항목 전체 fullmatch 검사로 재작성해, 문자열 연결(`"executor-" + "high"`)이 더 이상 두 개의 유효 항목으로 조용히 쪼개지지 않고 FAIL로 즉시 표면화된다.
+
+**실측/한계**: `scripts/test-lint.sh` 양성 케이스 4건(문자열 연결·템플릿 보간·B-11 map 누락·map 값 불일치) 중 3건은 구버전 린터(exit 0 또는 WARN뿐) 대비 비공허성을 실측 확인했다 — 단 템플릿 보간(`` `executor-${x}` ``) 1건은 구버전의 기존 문자 집합 검사(`$`,`{`,`}`가 IDENT_RE 밖)가 이미 다른 사유로 FAIL을 내고 있어 "신규로 잡은 케이스"는 아니다(회귀 방지 목적으로는 여전히 유효).
 
 `scripts/lint-delegate-first.py` Check A(B-07)는 정규식 기반 라인 파서다 — 실제 JS 파서가 아니다. B-07 후속 강화(2026-08-18)로 한 줄 포매팅·`/* */` 블록 주석·백틱 리터럴·항목 이름 위생 검사는 해소했지만, **문자열 연결**(예: `"executor-" + "high"`)로 쓴 항목은 여전히 못 잡는다 — 실측: `executor-high`를 이런 형태로 바꾸고 같은 커밋에서 `model`을 제거해도(진짜 fail-open) 두 조각("executor-", "high")이 서로 다른 미상 항목으로 오추출돼 원래 이름이 pinned 목록에서 "빠진 것"처럼 보이고, 정작 있어야 할 FAIL이 WARN 2건 + 무관한 리버스 WARN 1건으로 격하되며 종료 코드가 0이 된다(정상이면 FAIL 1, 종료 코드 1이어야 함).
 
@@ -158,7 +164,9 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 **상태**: 미착수 (결정 대기) · **우선순위**: 5
 
-PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따라서 pre-commit을 `--strict`로 올리면 (a) B-09의 실질 표면(Set 문자열 연결 미탐 시 부수 WARN 3건이 뜨므로 strict면 걸린다) (b) stale-pinned 드리프트 WARN이 기계 게이트에 걸린다.
+**근거 갱신 (2026-08-18, B-09 PR #9 이후)**: 현재 WARN 0건이고 `--strict`가 exit 0이다. B-09 해소로 **문자열 연결 케이스는 이제 WARN이 아니라 FAIL**이 됐다(정적 리터럴이 아니면 곧바로 FAIL로 표면화) — 아래 "(a) B-09의 실질 표면(Set 문자열 연결 미탐 시 부수 WARN 3건)"이라는 서술은 그 해소 이전 상태를 전제로 한 것이라 stale이다. 판단 자체는 다음 단계에서 한다.
+
+PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따라서 pre-commit을 `--strict`로 올리면 (a, stale) B-09의 실질 표면(Set 문자열 연결 미탐 시 부수 WARN 3건이 뜨므로 strict면 걸린다 — B-09 해소 후에는 FAIL이라 기본 모드에서도 걸림) (b) stale-pinned 드리프트 WARN이 기계 게이트에 걸린다.
 
 대가: 작업 중 `(리뷰 대기)` 행이 3건 이상 쌓이면 커밋이 막힌다(현재 WARN 조건 — 실제 판정은 `> MAX_PENDING(2)`이므로 3건째부터 걸린다).
 
@@ -168,7 +176,9 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 
 ## B-11 — 훅에 tier→기대 model 정적 map 검토
 
-**상태**: 미착수 · **우선순위**: 2
+**상태**: 해결 (2026-08-18, PR #9) — 훅이 tier의 model **값**을 검증한다. 실측: `judge-max`+`opus`가 구버전 exit 0 → 신버전 **exit 2**(강등 차단), `explorer-low`+`opus`도 차단(승급 차단), 쓰레기 값도 차단. break-glass `ALLOW_TIER_MODEL_OVERRIDE=1`은 **불일치만** 뚫고 model 미지정 차단은 그대로(실측 확인). · **우선순위**: 2
+
+**해소 내용**: `enforce-subagent-model.cjs`에 `TIER_EXPECTED_MODEL`(tier 5종 → 고정 model 값, frontmatter에서 직접 확인) 정적 객체를 추가하고, `model`이 지정된 tier 호출에서 값이 다르면 exit 2로 차단한다(require/fs 0건 불변식 유지 — 하드코딩 데이터일 뿐 동적 스캔 아님). 의도적 override는 별도 사람 전용 break-glass `ALLOW_TIER_MODEL_OVERRIDE=1`로 허용한다(`ALLOW_INHERITED_SUBAGENT_MODEL`과 분리 — model 미지정 차단 경로엔 적용 안 됨, `smoke-hook.sh`로 확인). `scripts/lint-delegate-first.py` Check A가 이 map ↔ `MODEL_PINNED_TYPES` Set ↔ agents frontmatter 3자 정합성을 검사한다(B-09 파서 강화와 결합). `scripts/smoke-hook.sh`에 케이스 7건 추가(비공허성 실측: 구버전 훅은 새로 추가한 "값 불일치 → 차단" 2건에서 exit 0을 반환했다).
 
 게이트 제안: 훅(`enforce-subagent-model.cjs`)이 `model` **값**을 검증하지 않는다 — `toolInput.model`이 비어 있지 않은 문자열이기만 하면(line 94 `if (typeof model === "string" && model.trim()) process.exit(0);`) 통과시킨다. 그래서 `judge-max`에 `opus`를 넘겨도 통과한다(조용한 강등). 실측(2026-08-18): 쓰레기 값 `totally-invalid-model-xyz`를 넘겨도 같은 조건으로 exit 0이 된다 — 값 검증 자체가 없기 때문에 임의 문자열이 전부 통과한다.
 
@@ -182,23 +192,23 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 
 ## B-12 — named 스폰에서 frontmatter effort 미유지 관찰
 
-**상태**: 관찰 필요(단정 금지) · **우선순위**: 3
+**상태**: 해결 (2026-08-18, PR #9) — 관찰이 실측으로 확정됐다. named 스폰(`taskKind: in_process_teammate`)은 **model은 frontmatter 적용, effort는 미적용**(executor-med medium→high, explorer-low low→max). SKILL.md·routing-matrix·전역 규칙 3곳 문면을 정정했다. haiku 계열의 effort 적용 여부는 transcript에 키가 없어 **판정 불가**로 남겼다. · **우선순위**: 3
 
-게이트가 관찰한 반례 1건: `name` 파라미터를 동반한 스폰(in_process_teammate 경로로 추정)에서 `explorer-low`가 정의 frontmatter의 `effort: low`가 아니라 `effort: max`로 실행됐다. 같은 세션의 형제 표준 스폰(named 없이) 3건은 frontmatter effort를 그대로 유지했다.
+**최초 관찰 (override 동반 프로브)**: `name` 파라미터를 동반한 스폰(in_process_teammate 경로로 추정)에서 `explorer-low`가 정의 frontmatter의 `effort: low`가 아니라 `effort: max`로 실행됐다. 단 이 프로브는 `model`도 함께 override했으므로, low→max가 named 스폰 단독 효과인지 override 혼입 효과인지 이 사례만으로는 분리되지 않는다. 같은 세션의 형제 표준 스폰(named 없이) 3건은 frontmatter effort를 그대로 유지했다.
 
-표본이 **1건**이므로 이것을 일반 규칙("named 스폰은 항상 effort를 안 지킨다")으로 단정하지 않는다 — 재현·표본 확대가 필요한 **관찰**로만 기록한다.
+**확정 (override 없는 재현 프로브)**: 위 혼입을 분리하기 위해 named 스폰(override 없음) 2건으로 재검증했다(delegation-log `B-12 변수분리 프로브`·`B-12 named 스폰 프로브` 행 참조). `executor-med`(sonnet)는 override 없이도 medium→high로 재현돼 named 스폰의 effort 미유지가 **확정**됐다. `explorer-low`(haiku)는 transcript에 `effort` 키 자체가 없어 미유지 여부를 이 경로로는 **판정 불가**로 남는다(haiku 계열이 effort를 아예 갖지 않는 모델 특성일 가능성 — 관찰로만 기록, 단정하지 않음). 따라서 결론의 근거는 override 없는 clean 표본인 executor-med 1건이고, 최초의 low→max(explorer-low) 관측은 override 혼입 표본이라 별도 근거로 쓰지 않는다. SKILL.md·routing-matrix·전역 규칙 3곳 문면은 이 확정 결과로 정정했다.
 
 **확인 방법**: 해당 세션 transcript에서 실제 적용된 effort 값을 확인한다 — `~/.claude/projects/<세션>/subagents/agent-*.meta.json` 파일의 `effort` 필드, 또는 세션 jsonl 로그에서 `"effort"` 키 값을 grep해 named 스폰과 표준 스폰을 대조한다.
 
-**할 일(미착수)**: 추가 named 스폰 사례를 수집해 표본을 늘리고, 재현되면 원인(in_process_teammate 경로가 frontmatter effort를 무시하는지, 파라미터 전달 버그인지)을 좁힌다. 재현 안 되면 관찰을 폐기하거나 "1회성 이상현상"으로 하향한다.
+**남은 불확실성**: haiku 계열의 effort 적용 여부는 여전히 판정 불가(transcript에 키 없음). low→max 관측은 override 혼입이라 named 스폰 단독 효과로 재확인되지 않았다 — 필요하면 `ALLOW_TIER_MODEL_OVERRIDE=1`로 override를 재현한 뒤 named-only 대조가 추가로 필요하다.
 
-**2026-08-18 관찰 추가 (표준 스폰, named 스폰과는 별개)**: B-06 end-to-end 실측 중 표준 스폰(named 파라미터 없이) 2건을 비교했다 — `explorer-low`(haiku) transcript에는 `effort` 키가 아예 없었고, `executor-med`(sonnet) transcript에는 `"effort":"medium"`이 있었다. haiku 계열이 effort를 갖지 않는 모델 특성일 가능성이 있으나, 표본이 1쌍뿐이라 **관찰로만** 기록하고 단정하지 않는다. 위 named 스폰 이상현상과는 다른 축(model 계열 vs 호출 경로)이므로 혼동하지 말 것.
+**2026-08-18 관찰 (표준 스폰, named 스폰과는 별개)**: B-06 end-to-end 실측 중 표준 스폰(named 파라미터 없이) 2건을 비교했다 — `explorer-low`(haiku) transcript에는 `effort` 키가 아예 없었고, `executor-med`(sonnet) transcript에는 `"effort":"medium"`이 있었다. haiku 계열이 effort를 갖지 않는 모델 특성일 가능성이 있으나, 표본이 1쌍뿐이라 **관찰로만** 기록하고 단정하지 않는다. 위 named 스폰 이상현상과는 다른 축(model 계열 vs 호출 경로)이므로 혼동하지 말 것.
 
 ---
 
 ## B-13 — REINSTALL 스왑이 정본에 없는 파일을 삭제하던 결함(수정됨)의 회귀 방지
 
-**상태**: 해결(이 PR) + 후속 검토
+**상태**: 해결 (2026-08-18, PR #9) — `scripts/reinstall.sh` + `scripts/test-reinstall.sh` 신설로 절차를 코드화. 20케이스 통과(2026-08-19, PR#9 후속 F-4 .new/.old 커버리지 2건 추가), 비공허성 확인(가드 무력화 사본에서 해당 케이스만 실패). **추가로 F3의 나머지 절반**(정본이 새 최상위 파일을 얻어도 설치되지 않고 대상의 낡은 사본이 승계되던 문제)을 정본 최상위 항목 **전체 복사**로 일반화해 봉합했다(실측: 정본 `CHANGELOG.md`가 대상의 낡은 동명 파일을 이기고 설치됨, 미제공 파일 `HANDOFF.md`는 승계 보존). + 후속 검토
 
 `docs/REINSTALL.md` §3의 copy-to-temp-then-swap 절차는 `$NEW`에 정본이 제공하는 파일(SKILL.md·references/)만 채운 뒤 기존 트리를 통째로 교체한다 — 이 성질상 정본에 없는 기존 파일(예: HANDOFF.md, NEW-REPO-PROMPT.md)은 스왑과 동시에 조용히 사라진다. 같은 절 바로 아래 문단은 "삭제는 이 절차에서 자동으로 하지 않는다"고 서술했지만, 절차 자체는 그 문단과 모순되게 두 파일을 실제로 지웠을 것이다. 2026-08-18 goone-rest 재설치 실행 중 이 결함이 발견됐고, 그 자리에서 두 파일을 `$NEW`로 승계하는 방식으로 교정해 실행했다(재설치 자체는 완료, goone-rest에 두 파일 보존 확인). 이번 PR은 §3 절차에 "정본이 제공하지 않는 기존 파일은 전부 승계"하는 단계를 명시해 문서와 실행을 일치시켰다.
 
@@ -206,6 +216,6 @@ PR#4로 베이스라인이 WARN-free가 됐다(`--strict`가 이제 exit 0). 따
 
 ## B-14 — REINSTALL 롤백 블록의 조건부 복원 처리(수정됨) + 절차 스크립트화 재검토
 
-**상태**: 해결(이 PR)
+**상태**: 해결 (2026-08-18, PR #9) — `scripts/reinstall.sh` + `scripts/test-reinstall.sh` 신설로 절차를 코드화. 20케이스 통과(2026-08-19, PR#9 후속 F-4 .new/.old 커버리지 2건 추가), 비공허성 확인(가드 무력화 사본에서 해당 케이스만 실패). **추가로 F3의 나머지 절반**(정본이 새 최상위 파일을 얻어도 설치되지 않고 대상의 낡은 사본이 승계되던 문제)을 정본 최상위 항목 **전체 복사**로 일반화해 봉합했다(실측: 정본 `CHANGELOG.md`가 대상의 낡은 동명 파일을 이기고 설치됨, 미제공 파일 `HANDOFF.md`는 승계 보존).
 
 §5 롤백 블록 끝의 두 `cp ... 2>/dev/null` 줄은 `set -euo pipefail` 아래에서 소스가 백업에 없으면(전역 훅·규칙이 원래 없던 환경) `cp`가 non-zero로 실패해 스크립트를 exit 1로 죽였는데, 바로 아래 산문은 "조용히 아무것도 하지 않는다"고 서술해 문서와 동작이 모순이었다 — 하필 비상 경로(롤백)에서 실패로 끝나는 결함. `[ -f ... ] && cp ... || echo 스킵` 형태의 조건부 복원 + 출력으로 교정했다. B-13과 같은 뿌리다: 절차를 사람이 복붙하는 bash로 유지하는 한 `set -e` + 리다이렉트 + 선택적 소스의 조합 결함이 계속 재발할 수 있다.

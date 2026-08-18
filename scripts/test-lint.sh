@@ -282,6 +282,67 @@ open(p, 'w', encoding='utf-8').write(content)
 "
 run_and_check "P-1 회귀2: 2차 표 헤더 오타+잘못된 실행경로 행 (FAIL 기대)" 1
 
+# 19. B-09: MODEL_PINNED_TYPES Set 항목에 문자열 연결(+) 사용 — model/map은
+# 건드리지 않는다(순수 파싱 신호만 격리해서 확인). 구버전 린터는 이 항목을
+# STRING_LITERAL_RE.finditer로 "executor-"와 "high" 두 개의 별개 유효 항목
+# 으로 오추출해(둘 다 IDENT_RE 문자 집합을 통과) 원래 이름 "executor-high"가
+# pinned 목록에서 조용히 "빠진 것"처럼 보이게 만들었다 — FAIL 없이 WARN만
+# 발생해 기본 모드에서 exit 0이었다(BACKLOG B-09 실측과 동일 패턴).
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\", // sonnet/high\n'
+new = '  \"executor-\" + \"high\", // sonnet/high\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-09: Set 항목 문자열 연결(+) (FAIL 기대)" 1
+
+# 20. B-09: MODEL_PINNED_TYPES Set 항목에 템플릿 리터럴 보간(\${...}) 사용.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\", // sonnet/high\n'
+new = '  \`executor-\${\"high\"}\`, // sonnet/high\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-09: Set 항목 템플릿 리터럴 보간 (FAIL 기대)" 1
+
+# 21. B-11: TIER_EXPECTED_MODEL map에서 tier 하나 누락(Set·frontmatter는
+# 그대로) — pinned Set엔 'executor-high'가 있고 frontmatter도 정상인데 map
+# 에서만 그 항목이 빠진 상태. 구버전 린터(TIER_EXPECTED_MODEL을 전혀 모름)
+# 는 이 드리프트를 원리상 볼 수 없어 exit 0이다.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"sonnet\",\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, '', 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-11: map에 tier 누락 (FAIL 기대)" 1
+
+# 22. B-11: TIER_EXPECTED_MODEL map 값이 frontmatter와 불일치(Set은 그대로,
+# frontmatter도 그대로 sonnet) — map만 'opus'로 드리프트된 상태. 구버전
+# 린터는 map을 전혀 읽지 않으므로 이 드리프트도 원리상 볼 수 없어 exit 0.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"sonnet\",\n'
+new = '  \"executor-high\": \"opus\",\n'
+assert old in t, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-11: map 값이 frontmatter와 불일치 (FAIL 기대)" 1
+
 # ===========================================================================
 # 음성 케이스 (PASS를 기대 — 종료코드 0)
 # ===========================================================================
@@ -316,6 +377,28 @@ with open(p, 'a', encoding='utf-8') as f:
     f.write('| 2026-08-19 | executor-high | 날짜 검증 로직 추가 | sonnet | high(frontmatter) | Agent(tier) | pass |\n')
 "
 run_and_check "role 셀에 '날짜' 부분문자열 포함 (PASS 기대, F1)" 0
+
+# N5. C7: 훅이 Prettier semi:false 스타일(세미콜론 없음)로 포매팅됨 —
+# MODEL_PINNED_TYPES의 종결자가 '])'(세미콜론 없음), TIER_EXPECTED_MODEL의
+# 종결자가 '}'(세미콜론 없음)여야 정상 파싱된다. 구버전 린터는 리터럴
+# "]);"/"};" 서브스트링만 찾아 이 스타일에서 종결자를 영원히 못 찾고 파일
+# 나머지 전체(TIER_EXPECTED_MODEL과 그 뒤 함수 본문 전부)를 Set 항목으로
+# 오추출해 FAIL 폭포(수십~백여 건)를 냈다(C7 실측). 내용은 원본과 동일하게
+# 유지하고 종결자 포매팅만 바꿔, 파싱 로직만의 회귀인지 확인한다.
+new_case
+python3 -c "
+import re
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+# 정확히 한 번씩만 나타나는 종결 줄(Set의 ']);'와 map의 '};')을 세미콜론
+# 없는 형태로 바꾼다 — 내용은 그대로, 포매팅만 semi:false 스타일로.
+assert t.count('\n]);\n') == 1, 'fixture: Set 종결 줄이 정확히 1개가 아님 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace('\n]);\n', '\n])\n', 1)
+assert t.count('\n};\n') == 1, 'fixture: map 종결 줄이 정확히 1개가 아님 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace('\n};\n', '\n}\n', 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "C7: 훅 세미콜론 없는(semi:false) 종결자 스타일 (PASS 기대)" 0
 
 # ===========================================================================
 # 결과 집계

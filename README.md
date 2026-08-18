@@ -24,7 +24,12 @@ SKILL.md (원칙 + 5단계 체크리스트)
               ↑ routing-matrix.md가 이 5종의 model+effort 조합을 가리킴
               ↑ 강제(기계적 차단)
         PreToolUse 훅: enforce-subagent-model.cjs
-              (matcher: Agent — tool_input.model 없으면 exit 2로 차단)
+              (matcher: Agent — tool_input.model 없으면 exit 2로 차단.
+               tier 호출에 model을 넘기면 그 tier의 고정값과 정확히
+               일치해야 통과 — 별칭 exact match, 대소문자·전체 모델 ID
+               불가, 불일치는 exit 2. 생략이 권장. break-glass 2종:
+               ALLOW_INHERITED_SUBAGENT_MODEL=1(model 미지정 차단 우회) /
+               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회), B-11)
               ↑ 정책 근거
         글로벌 규칙: subagent-model-routing.md
 ```
@@ -48,8 +53,10 @@ SKILL.md (원칙 + 5단계 체크리스트)
 │   └── handoff/delegation-log.md      (위임 로그 — 스킬 3단계가 요구)
 ├── scripts/
 │   ├── smoke-hook.sh                  (훅 회귀 스모크)
-│   ├── lint-delegate-first.py         (B-07+B-02 린터)
-│   └── test-lint.sh                   (린터 자체 회귀망)
+│   ├── lint-delegate-first.py         (B-07+B-02+B-09+B-11 린터)
+│   ├── test-lint.sh                   (린터 자체 회귀망)
+│   ├── reinstall.sh                   (REINSTALL.md 절차 실행본, 파괴적, --dry-run 지원)
+│   └── test-reinstall.sh              (reinstall.sh 회귀 테스트)
 ├── .githooks/pre-commit               (린터+린터 회귀망+스모크 게이트, 옵트인)
 ├── .gitignore
 ├── BACKLOG.md
@@ -96,6 +103,8 @@ cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
 
 break-glass는 **사람 전용**이다: `ALLOW_INHERITED_SUBAGENT_MODEL=1`. 에이전트가 이 변수를 스스로 설정하지 않는다.
 
+**B-11(2026-08-18)**: 훅은 이제 tier 5종 호출에 `model`이 지정된 경우 그 **값**까지 검증한다 — `TIER_EXPECTED_MODEL`(tier → 고정 model 맵)과 다른 값을 넘기면 exit 2로 차단한다(예: `judge-max`에 `opus`를 넘겨 최고 검증 게이트를 조용히 저비용 모델로 낮추는 시도). 의도적으로 다른 model을 쓰려면 별도의 **사람 전용** break-glass `ALLOW_TIER_MODEL_OVERRIDE=1`을 설정한다(`ALLOW_INHERITED_SUBAGENT_MODEL`과 별개 — 이쪽은 model 불일치만 허용하고, model 미지정 차단 자체는 여전히 막는다).
+
 이 레포 자체는 이미 활성 `.claude/settings.json`(위 블록과 **같은 구조** — command가 `node <훅 절대경로>/...`가 아니라 `node "${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs"`라는 점이 다르다)을 포함하고 있다 — 정본 레포가 자기 규율을 dogfood하는 배선이다. `${CLAUDE_PROJECT_DIR}`는 Claude Code가 훅 command 안에서 프로젝트 루트 절대경로로 확장해주는 변수라 경로를 하드코딩하지 않고도 이식 가능하다 — 어느 프로젝트로 복사하든 그대로 동작한다. 큰따옴표로 감싸는 것이 권장된다.
 
 **trust 동작 주의**: 대화형 세션은 workspace trust 다이얼로그를 수락하기 전까지 settings 파일의 훅을 보류한다. 그래서 "Agent 호출이 차단되지 않는다"가 항상 "훅 미등록"을 뜻하지는 않는다 — trust를 아직 수락하지 않은 상태일 수도 있다. 반대로 `-p`/SDK(헤드리스) 세션은 폴더를 신뢰된 것으로 취급해 커밋된 `.claude/settings.json`의 훅이 그대로 실행된다. 레포에 훅을 커밋해 배포할 때는 이 비대칭(대화형=trust 게이트, 헤드리스=즉시 활성)을 인지하고 있어야 한다.
@@ -127,10 +136,12 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 ## scripts/
 
-- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
-- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 16건 + 음성(PASS 기대) 3건, 실측 ~1초.
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1, WARN만 있으면 0(`--strict`면 1). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
+- `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대) 22건 + 음성(PASS 기대) 4건, 실측 ~1초.
 - `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음).
-- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 위 세 스크립트가 자동 실행된다(자동 설치되지 않음).
+- `bash scripts/reinstall.sh [--dry-run]` — [docs/REINSTALL.md](docs/REINSTALL.md) §3 절차(정본 → 프로젝트 로컬 재설치)를 실행하는 스크립트. **파괴적**(대상 프로젝트 트리를 교체)이므로 실행 전 `--dry-run`으로 먼저 확인할 것. 전역(`~/.claude/`) 전파는 기본 비활성 — 별도 단계로 명시 실행해야 한다.
+- `bash scripts/test-reinstall.sh` — `reinstall.sh`의 회귀 테스트(스크래치 사본에서 실행, 부작용 없음).
+- pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 린터·린터 회귀망·훅 스모크가 자동 실행된다(자동 설치되지 않음).
 
 ## 원칙 요약
 

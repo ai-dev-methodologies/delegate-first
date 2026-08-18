@@ -8,12 +8,28 @@
  *   호출은 목적에 맞는 model을 **명시**해야 한다 (세션 상속 금지).
  *
  * 동작:
- *   - tool_input.model 이 있으면 통과.
- *   - subagent_type 이 자체 model 을 고정한 정의형 에이전트(플러그인 정의에
- *     model frontmatter 보유)는 알 수 없으므로, 알려진 고정 모델 타입 목록은
- *     통과시킨다 (아래 MODEL_PINNED_TYPES).
+ *   - tool_input.model 이 있고, subagent_type 이 tier 5종(아래
+ *     TIER_EXPECTED_MODEL) 중 하나면 그 값이 tier의 고정값과 **일치할 때만**
+ *     통과시킨다 — 불일치는 exit 2 로 차단한다(B-11: 조용한 강등/승급 봉인.
+ *     예: judge-max에 opus를 넘겨 최고 검증 단계를 저비용 모델로 몰래
+ *     낮추는 시도). tier가 아닌 subagent_type에 model이 있으면(기대값을
+ *     알 수 없으므로) 종전처럼 값 검증 없이 통과시킨다.
+ *   - tool_input.model 이 없으면: subagent_type 이 자체 model 을 고정한
+ *     정의형 에이전트(플러그인 정의에 model frontmatter 보유)는 알 수
+ *     없으므로, 알려진 고정 모델 타입 목록은 통과시킨다 (아래
+ *     MODEL_PINNED_TYPES).
  *   - 그 외 model 미지정 → exit 2 로 차단하고 라우팅 지침을 돌려준다.
  *   - break-glass(사람 전용): env ALLOW_INHERITED_SUBAGENT_MODEL=1
+ *     (model 미지정 자체를 전부 허용 — 기존 동작). 이 스위치는 "model이
+ *     없는" 경로에서만 평가된다 — model이 있는데 tier 기대값과 다른
+ *     경우(아래 ALLOW_TIER_MODEL_OVERRIDE의 영역)는 이 스위치로 우회되지
+ *     않는다(F-5: 예전엔 이 검사가 함수 진입 직후 최상단에 있어 두
+ *     break-glass가 사실상 하나로 합쳐져 있었다 — B-11 값 검증까지 통째로
+ *     무력화했다. 지금은 아래 "model 없음" 분기 안에서만 평가한다).
+ *   - break-glass(사람 전용, B-11 신설): env ALLOW_TIER_MODEL_OVERRIDE=1
+ *     (tier의 model 값 불일치만 허용 — 의도적으로 다른 model을 쓰고 싶은
+ *     경우, 예: judge-max를 실험적으로 opus로 낮춰 비용 비교). 이 값은
+ *     Claude가 스스로 설정하지 않는다.
  *
  * 공급망 서약 (README.md "훅 공급망 고지"와 동일 계약):
  *   이 훅은 레포에 커밋되어 배포되고, 헤드리스(-p/SDK) 세션에서는 workspace
@@ -78,10 +94,32 @@ const MODEL_PINNED_TYPES = new Set([
   // 반드시 함께 고쳐야 한다 — 자동 동기화 수단이 없다.
 ]);
 
+// tier 5종 → 기대 model 값 (B-11). 값은 각 .claude/agents/*.md frontmatter를
+// 직접 읽어 확인한 것이며 추측이 아니다(2026-08-18 재확인, 위
+// MODEL_PINNED_TYPES 주석의 tier 5종 출처와 동일):
+//   explorer-low → haiku, executor-med → sonnet, executor-high → sonnet,
+//   reviewer-high → opus, judge-max → fable.
+// oh-my-claudecode:*·statusline-setup은 이 레포 밖 정의라 기대값을 알 수
+// 없으므로 이 map의 검증 대상에서 제외한다 — MODEL_PINNED_TYPES에는 그대로
+// 남아 model 미지정 시 통과는 유지되고, 값 불일치 차단만 이 5종에 한해
+// 적용된다.
+//
+// ⚠ 드리프트 주의: 이 map도 MODEL_PINNED_TYPES와 마찬가지로 정적
+// 하드코딩이다 — tier 에이전트 frontmatter의 model이 바뀌면 이 map도 같이
+// 고쳐야 한다(자동 동기화 수단 없음). scripts/lint-delegate-first.py Check A가
+// 이 map ↔ MODEL_PINNED_TYPES Set ↔ agents/*.md frontmatter 3자 정합성을
+// 검사한다(B-09).
+const TIER_EXPECTED_MODEL = {
+  "explorer-low": "haiku",
+  "executor-med": "sonnet",
+  "executor-high": "sonnet",
+  "reviewer-high": "opus",
+  "judge-max": "fable",
+};
+
 let raw = "";
 process.stdin.on("data", (chunk) => (raw += chunk));
 process.stdin.on("end", () => {
-  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
   let input;
   try {
     input = JSON.parse(raw);
@@ -91,7 +129,38 @@ process.stdin.on("end", () => {
   const toolInput = (input && input.tool_input) || {};
   const model = toolInput.model;
   const subagentType = toolInput.subagent_type || "";
-  if (typeof model === "string" && model.trim()) process.exit(0);
+  const hasModel = typeof model === "string" && model.trim();
+
+  if (hasModel) {
+    const isTier = Object.prototype.hasOwnProperty.call(
+      TIER_EXPECTED_MODEL,
+      subagentType
+    );
+    if (isTier) {
+      const expected = TIER_EXPECTED_MODEL[subagentType];
+      const requested = model.trim();
+      if (requested !== expected) {
+        if (process.env.ALLOW_TIER_MODEL_OVERRIDE === "1") process.exit(0);
+        process.stderr.write(
+          [
+            `[subagent-model-routing] tier '${subagentType}' 호출의 model 값이 이 tier의 고정값과 다릅니다 — 조용한 강등/승급 차단(B-11).`,
+            `  요청한 값: ${requested}`,
+            `  이 tier의 고정값: ${expected}`,
+            "  model 파라미터를 생략하면 고정값(frontmatter model+effort)이 그대로 적용됩니다 — 보통은 생략을 권장합니다.",
+            "  강등 위험: 예를 들어 judge-max(fable/max, 최고 검증 게이트)에 opus를 넘기면 릴리스 게이트가 조용히 저비용 모델로 낮아질 수 있습니다.",
+            "  의도적 override라면 사람이 직접 ALLOW_TIER_MODEL_OVERRIDE=1을 설정하세요 (Claude는 이 변수를 스스로 설정하지 않습니다).",
+          ].join("\n")
+        );
+        process.exit(2);
+      }
+    }
+    process.exit(0);
+  }
+
+  // model 미지정 경로 — ALLOW_INHERITED_SUBAGENT_MODEL은 여기서만 평가한다
+  // (F-5: tier 값 불일치 차단은 위 분기에서 이미 끝났으므로 이 지점에
+  // 도달하지 않는다 — 이 break-glass가 B-11 값 검증을 우회할 수 없다).
+  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
   if (MODEL_PINNED_TYPES.has(subagentType)) process.exit(0);
   process.stderr.write(
     [

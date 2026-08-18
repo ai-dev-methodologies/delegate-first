@@ -64,8 +64,41 @@ run_case "general-purpose, model haiku" '{"tool_input":{"subagent_type":"general
 # --- 플러그인 정의형 pinned 타입 ---
 run_case "oh-my-claudecode:writer, model 없음" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer"}}' 0
 
-# --- tier + model 명시 (덮어쓰기 허용 경로) ---
-run_case "tier executor-high + model opus 명시" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 0
+# --- B-11: tier + model 명시, 기대값과 일치 → 통과 (exit 0) ---
+run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku"}}' 0
+run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet"}}' 0
+run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 0
+run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus"}}' 0
+run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable"}}' 0
+
+# --- B-11: tier + model 명시, 기대값과 불일치 → 차단 (exit 2, 조용한 강등/승급 봉인) ---
+# 주의: 이 두 케이스는 B-11 이전엔 "tier executor-high + model opus 명시"가
+# exit 0(통과)을 기대했었다 — 구버전 훅은 model 값을 전혀 검증하지 않고
+# 비어있지 않은 문자열이면 무조건 통과시켰기 때문이다. B-11이 바로 이
+# 조용한 강등/승급(예: judge-max에 opus를 넘겨 최고 검증 게이트를 저비용
+# 모델로 몰래 낮추는 것)을 막는 것이 목적이므로, 이 exit 2로의 전환은
+# 의도된 동작 변경이지 회귀가 아니다.
+run_case "tier executor-high + model opus(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 2
+run_case "tier judge-max + model opus(강등 시도 → 차단)" '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2
+
+# --- B-11: break-glass ALLOW_TIER_MODEL_OVERRIDE=1 → 불일치도 통과 ---
+run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + judge-max + model opus(불일치)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 0 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+
+# --- B-11: ALLOW_TIER_MODEL_OVERRIDE=1은 "model 미지정 + non-pinned 차단" 경로엔 적용 안 됨(범위 한정 확인) ---
+run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + general-purpose, model 없음(여전히 차단)" \
+  '{"tool_input":{"subagent_type":"general-purpose"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+
+# --- F-5: ALLOW_INHERITED_SUBAGENT_MODEL=1은 "model 미지정" 경로에만 적용된다 —
+# tier 값 불일치(위 B-11 차단)까지 우회해서는 안 된다. 이전엔 이 검사가
+# 함수 최상단에서 무조건 exit 0 했기 때문에 이 케이스가 (잘못) 0을
+# 반환했다 — 지금은 2여야 한다(두 break-glass가 실제로 분리돼 있음을
+# 회귀로 고정).
+run_case "ALLOW_INHERITED_SUBAGENT_MODEL=1 + judge-max + model opus(불일치 → 여전히 차단, F-5)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
 
 # --- subagent_type 자체가 없음 ---
 run_case "subagent_type 없음, model 없음" '{"tool_input":{}}' 2
@@ -87,6 +120,15 @@ run_case "__proto__ 프로토타입 오염 시도" '{"tool_input":{"__proto__":{
 run_case "model 숫자" '{"tool_input":{"subagent_type":"general-purpose","model":123}}' 2
 run_case "model 배열" '{"tool_input":{"subagent_type":"general-purpose","model":["sonnet"]}}' 2
 run_case "model bool" '{"tool_input":{"subagent_type":"general-purpose","model":true}}' 2
+
+# --- C10: tier + model 형식 변형 — 별칭 exact match(대소문자·전체 ID
+# 불일치는 차단), trim은 적용(앞뒤 공백은 제거 후 비교)됨을 회귀로 고정 ---
+run_case "C10: judge-max + model FABLE(대문자, 불일치 → 차단)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"FABLE"}}' 2
+run_case "C10: judge-max + model claude-fable-5(전체 ID, 불일치 → 차단)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"claude-fable-5"}}' 2
+run_case "C10: judge-max + model \" fable\"(앞 공백, trim 후 일치 → 통과)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":" fable"}}' 0
 
 # --- 파싱 불가/빈 stdin: 설계된 fail-open ---
 run_case "비JSON stdin" 'not json {' 0
