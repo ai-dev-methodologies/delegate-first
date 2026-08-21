@@ -2,15 +2,14 @@
 
 이 문서는 **완성된 정본 레포 버전**을 이미 로컬 사본이 돌아가고 있는 프로젝트(최초 대상: `goone-rest`)에 덮어 설치하는 절차다. `scripts/reinstall.sh`는 `.claude/`가 아예 없는 신규 설치 대상도 지원하지만, 이 문서 자체의 서술 범위는 여전히 갱신·재설치 중심이다 — 신규 설치 시 사람이 별도로 챙겨야 할 것(훅 등록 등)은 [README.md](../README.md) §설치의 순서를 따른다.
 
-> **권장 경로는 `scripts/reinstall.sh`다.** 아래 §0~§5는 사람이 복붙하는 bash 절차라 결함이 5건(B-13/B-14 포함) 나온 뒤에야 봉합됐고, 문서를 아무리 정확히 고쳐도 다음 실행자가 그대로 복붙하지 않으면 같은 사고가 재발할 수 있다. 스크립트가 이 절차(백업 → diff → copy-to-temp-then-swap → tier 에이전트 → 검증)를 코드로 강제하고, `scripts/test-reinstall.sh`로 회귀 테스트가 붙어 있다. 사용 예:
+> **권장 경로는 `scripts/reinstall.sh`다.** 아래 §0~§4는 사람이 복붙하는 bash 절차라 결함이 5건(B-13/B-14 포함) 나온 뒤에야 봉합됐고, 문서를 아무리 정확히 고쳐도 다음 실행자가 그대로 복붙하지 않으면 같은 사고가 재발할 수 있다. 스크립트가 이 절차(백업 → diff → copy-to-temp-then-swap → tier 에이전트 → 검증)를 코드로 강제하고, `scripts/test-reinstall.sh`로 회귀 테스트가 붙어 있다. 사용 예:
 
 ```bash
 ./scripts/reinstall.sh --src "/PATH/TO/정본레포" --dst "/PATH/TO/대상프로젝트" --dry-run   # 1. 계획만 확인
 ./scripts/reinstall.sh --src "/PATH/TO/정본레포" --dst "/PATH/TO/대상프로젝트" --yes       # 2. 실제 실행
-./scripts/reinstall.sh --rollback "/PATH/TO/백업디렉터리" --dst "/PATH/TO/대상프로젝트" --yes  # 3. 문제 시 롤백
 ```
 
-> 전역 훅·규칙 전파/롤백은 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 각각 `--propagate-global`/`--rollback-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§5의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
+> `--rollback`은 없다. 문제가 생기면 §5를 따른다 — 복구는 별도 복원 기계가 아니라 정본을 원하는 커밋으로 되돌려 다시 설치하는 것이다. 전역 훅·규칙 전파는 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 `--propagate-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§3의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
 
 > **실행 승인 게이트**: 이 절차는 **사용자 명시 승인 후에만** 실행한다(스크립트 경로든 수동 경로든 동일). 대상 프로젝트의 로컬 스킬은 **의도적으로 git 추적 밖(untracked)** 이라 되돌릴 git 히스토리가 없다 — 백업(1단계)을 건너뛰면 복구 수단이 없다.
 
@@ -44,13 +43,13 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 mkdir -p "$BAK"
 cp -R "$DST/.claude/skills/delegate-first" "$BAK/skills-delegate-first"
 cp -R "$DST/.claude/agents"               "$BAK/agents"
-cp "$HOME/.claude/hooks/enforce-subagent-model.cjs" "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상) — 단 §5 주의사항 참조
-cp "$HOME/.claude/rules/subagent-model-routing.md"  "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상) — 단 §5 주의사항 참조
+cp "$HOME/.claude/hooks/enforce-subagent-model.cjs" "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상)
+cp "$HOME/.claude/rules/subagent-model-routing.md"  "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상)
 ```
 
 백업 디렉터리가 실제로 채워졌는지 눈으로 확인한다(`find "$BAK" -type f`). 0바이트·빈 디렉터리를 "존재=정상"으로 넘기지 않는다.
 
-**주의 — 전역 파일(훅·규칙)은 전파 전에 따로 백업해야 롤백 가치가 있다**: 위 블록의 `$BAK/enforce-subagent-model.cjs`·`$BAK/subagent-model-routing.md`는 **이 재설치를 시작하는 시점**의 전역 상태를 담는다. 만약 이 재설치보다 **먼저** 별도 절차(예: B-08류 전역 전파)로 전역 훅·규칙이 이미 정본판으로 갱신된 뒤라면, 이 `$BAK`에 담기는 것도 이미 정본판이라 롤백 가치가 없다 — 그런 경우 롤백에 쓸 "전파 전" 백업은 그 별도 절차가 만든 백업(예: `~/.claude-backups/b08-<stamp>/`)이어야 한다. §5 참고.
+**이 백업은 참고용이다, 자동 복원 대상이 아니다**: 위 블록의 `$BAK`는 이 재설치를 시작하는 시점의 스냅샷일 뿐이다 — 복구는 이 백업에서 파일을 되돌리는 방식이 아니라 §5의 "정본을 원하는 커밋으로 되돌려 다시 설치"로 한다. `$BAK`는 문제가 생겼을 때 "재설치 전에 실제로 뭐가 있었는지" 사람이 직접 열어 보는 용도로만 쓴다.
 
 ## 2. 교체 전 diff 확인 (덮어쓰기 전에 무엇이 바뀌는지 본다)
 
@@ -220,56 +219,22 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-
 
 추가 확인: 정본 레포에서 `bash scripts/smoke-hook.sh` 실행 → `PASS n/n` 확인(훅 스크립트 단위 회귀 없음).
 
-## 5. 롤백
+## 5. 복구
 
-> **주의 — `$BAK`을 재계산하지 말 것**: 롤백은 보통 §0~§4를 실행한 세션과 **다른 세션**에서 실행된다. 그 세션에서 §0을 다시 실행하면 `STAMP=$(date +%Y%m%d-%H%M%S)`가 **재평가**되어 `$BAK`이 **§1에서 실제로 백업을 만든 경로가 아닌, 방금 계산된 존재하지 않는 새 경로**를 가리키게 된다. 이 상태로 아래 블록을 돌리면 `rm -rf`가 먼저 살아있는 스킬을 지우고, 그다음 `cp`는 없는 소스 경로를 읽으려다 실패한다 — §3에서 봉합한 것과 같은 사고 패턴이다. 롤백 시 `$BAK`은 **§1에서 실제로 백업을 만든 그 경로**를 다시 지정해야 한다. 어느 경로였는지 모르면 최근 백업을 찾는다(아래 명령의 출력값을 `BAK=`에 그대로 대입한 뒤 롤백 블록을 실행한다):
-
-```bash
-ls -1dt "$HOME/.claude-backups/delegate-first-"* | head -1
-```
-
-> **경고 — 이 `delegate-first-*` 백업으로 전역 훅·규칙을 롤백하지 말 것(2026-08-18 실측)**: `$HOME/.claude-backups/delegate-first-<stamp>/`는 **이 REINSTALL §1**이 만든 백업이고, 그 안의 `enforce-subagent-model.cjs`·`subagent-model-routing.md` 사본은 **이 재설치를 시작한 시점**의 전역 상태다. 만약 이 재설치보다 **먼저** 별도 절차(예: B-08의 전역 전파)로 전역 훅·규칙이 이미 정본판으로 갱신됐다면, `delegate-first-*` 백업 안의 훅·규칙은 **전파 후 사본** — 즉 정본과 동일 — 이라 롤백 가치가 없다. 이 상태로 아래 롤백 블록의 마지막 두 `cp`를 실행하면 "롤백"이라는 이름으로 오히려 **새 버전을 다시 설치**하게 되어, 전역 롤백이 **실패도 경고도 없이 무효화**된다.
->
-> 절차를 목적별로 분리한다:
-> - **스킬 트리·tier 에이전트 롤백**(이 프로젝트 로컬 상태 복원): 아래 블록대로 `delegate-first-*` 백업을 쓴다. 이 부분은 항상 유효하다(스킬·에이전트는 이 REINSTALL 절차 밖에서 별도로 전파되는 경로가 없다).
-> - **전역 훅·규칙 롤백**: **전파 직전에 별도로 잡아 둔 백업**(예: `~/.claude-backups/b08-<stamp>/`)에서 복원해야 한다. `delegate-first-*` 백업이 아니다. 어느 백업이 "전파 전"인지 모르면, 파일 내용을 `cmp`로 대조하거나(전역 훅/규칙과 정본 `$SRC`가 byte-identical이면 그 백업은 전파 후 사본일 가능성이 높다) 해당 전파 절차의 기록(예: `BACKLOG.md` B-08)을 먼저 확인한다.
+이 절차(스크립트 경로든 §0~§4의 수동 경로든)에 `--rollback`/롤백은 없다. 예전에는 §1 백업에서 스킬 트리와 tier 5종 에이전트 파일을 복원하는 전용 절차가 있었지만, 결함이 8건(B-15/B-16/B-17 포함, `../BACKLOG.md` 참고) 나온 뒤 걷어냈다 — 롤백이 복원하려던 내용(`SKILL.md`, tier 에이전트, 훅, 규칙)은 전부 이 정본 레포의 git 이력에 이미 있고, 롤백이 손대면 안 됐던 내용(대상 프로젝트 고유 파일 — `HANDOFF.md`, `NEW-REPO-PROMPT.md`, 사용자 커스텀 에이전트)은 설치 절차 자체가 애초에 건드리지 않는다. 그래서 별도 복원 기계 없이, **정본을 원하는 커밋으로 되돌려 다시 설치**하는 것으로 복구가 충분하다:
 
 ```bash
-set -euo pipefail
-
-# 가드: 백업이 실제로 존재하는지 delete 전에 확인 (STAMP 재평가로 $BAK이 빈 경로를 가리키는 사고 방지)
-[ -d "$BAK/skills-delegate-first" ] || { echo "백업 없음: $BAK — STAMP가 재평가되지 않았는지 확인하라 (위 주의사항 참고)"; exit 1; }
-
-# 중단된 재설치가 남긴 .new/.old 잔여물 정리 (가드 통과 후에만 실행 — §3 참고)
-rm -rf "$DST/.claude/skills/delegate-first".new "$DST/.claude/skills/delegate-first".old
-
-rm -rf "$DST/.claude/skills/delegate-first"
-cp -R "$BAK/skills-delegate-first" "$DST/.claude/skills/delegate-first"
-cp -R "$BAK/agents/." "$DST/.claude/agents/"
-if [ -f "$BAK/enforce-subagent-model.cjs" ]; then
-  cp "$BAK/enforce-subagent-model.cjs" "$HOME/.claude/hooks/"
-  echo "복원함: enforce-subagent-model.cjs"
-else
-  echo "스킵함: enforce-subagent-model.cjs (백업에 소스 없음)"
-fi
-if [ -f "$BAK/subagent-model-routing.md" ]; then
-  cp "$BAK/subagent-model-routing.md" "$HOME/.claude/rules/"
-  echo "복원함: subagent-model-routing.md"
-else
-  echo "스킵함: subagent-model-routing.md (백업에 소스 없음)"
-fi
+git -C <정본레포> checkout <원하는 커밋>
+./scripts/reinstall.sh --src <정본레포> --dst <대상프로젝트> --yes
+git -C <정본레포> checkout main   # 되돌리기
 ```
 
-**훅/규칙이 원래 없던 환경이었다면**: §1의 두 `cp ... 2>/dev/null` 줄은 원본이 없으면 조용히 아무것도 하지 않는다. 그러면 `$BAK`에도 해당 파일이 없으므로, 위 롤백 블록의 마지막 두 조건문은 소스 부재를 "스킵함" 메시지로 명시적으로 알리고 **exit 0을 유지한 채** 다음 단계로 넘어간다(과거에는 `set -e` 아래에서 `cp`가 소스 부재로 실패해 스크립트 전체가 exit 1로 죽었다 — 이제는 진짜 오류만 스크립트를 중단시킨다). 스킵된 경우 완전한 원상복구를 위해 롤백 후 아래를 **수동으로** 실행해야 한다:
+- `<원하는 커밋>`은 보통 이번 재설치 **직전**의 정본 상태 — `git -C <정본레포> log --oneline`으로 재설치 전 마지막 커밋을 찾는다.
+- §1의 백업(`$BAK`, 스크립트 경로라면 `$HOME/.claude-backups/delegate-first-<stamp>/`)은 이제 자동 복원 대상이 아니다 — 문제가 생겼을 때 사람이 직접 열어 "무엇이 바뀌었는지" 참고할 사본일 뿐이다.
+- 전역 훅·규칙(`$HOME/.claude/hooks/enforce-subagent-model.cjs`, `$HOME/.claude/rules/subagent-model-routing.md`)도 같은 모델을 따른다 — 정본을 원하는 커밋으로 되돌린 뒤 `--propagate-global`을 붙여 재설치하면 전역도 그 커밋 상태로 복구된다.
+- 복구 후에도 §4 검증 3단계를 다시 돌려 원상 복구를 확인한다.
 
-```bash
-rm -f "$HOME/.claude/hooks/enforce-subagent-model.cjs"
-rm -f "$HOME/.claude/rules/subagent-model-routing.md"
-```
-
-롤백 후에도 4단계 검증 3종을 다시 돌려 원상 복구를 확인한다.
-
-**계약 — 빈 상위 디렉터리는 남는다(회귀 아님)**: 롤백은 스킬 트리(`skills/delegate-first`)와 tier 5종 에이전트 **파일**을 제거하지만, 상위 디렉터리 자체는 지우지 않는다. `.claude/skills`는 롤백이 복원 대상 유무와 무관하게 `mkdir -p`로 **항상** 만든다 — 복원할 스킬 내용이 없는 신규 설치 롤백에서도 빈 채로 생긴다. `.claude/agents`는 롤백 자체가 만들지는 않지만, 그 앞의 설치 단계가 이미 만들어 둔 채로 남아 있고 롤백은 그 안의 tier 파일만 지운다. 즉 롤백은 "이 프로젝트가 추적하는 스킬/tier 에이전트 산출물이 없다"는 상태로는 정확히 복귀하지만, "`.claude` 트리가 설치 전과 완전히 동일하다"는 뜻은 아니다 — `.claude/skills`·`.claude/agents` 두 디렉터리 자체는 빈 채로 계속 존재할 수 있다.
+**왜 이걸로 충분한가**: 이 스크립트가 설치하는 모든 항목은 정본 레포 워킹트리의 스냅샷이다 — "재설치"와 "복구"는 같은 연산(정본 → 대상 복사)에 커밋 선택만 다르다. 별도 백업/복원 계약을 유지할 이유가 없다.
 
 ## 6. 이후 관례
 
