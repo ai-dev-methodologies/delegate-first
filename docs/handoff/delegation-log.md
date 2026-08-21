@@ -48,4 +48,7 @@
 | 2026-08-18 | explorer-low | B-12 named 스폰 프로브(name 동반, override 없음) | (파라미터 생략) | low(frontmatter, 판정 불가) | Agent(tier) | pass (model=haiku 적용, effort 키 없음) |
 | 2026-08-18 | executor-med | B-12 변수분리 프로브(named, override 없음) | (파라미터 생략) | medium(frontmatter, 미적용) | Agent(tier) | pass (effort=high로 관측 — named 스폰 effort 미적용 확정) |
 | 2026-08-18 | executor-high | B-13/B-14 재설치 스크립트화 + 정본 제공목록 일반화 | sonnet | high(frontmatter) | Agent(tier) | pass (test-reinstall 12/12) |
-| 2026-08-19 | executor-high | B-10 클래스 분리 + strict 승격 | sonnet | high(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-08-19 | executor-high | B-10 클래스 분리 + strict 승격 | sonnet | high(frontmatter) | Agent(tier) | pass (PR #10 머지) |
+| 2026-08-19 | judge-max | PR#10 릴리스 게이트(커밋 게이트 발동조건 변경 적대 판정) | (파라미터 생략) | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (분류 5건 옳음, README 산식 1건) |
+| 2026-08-19 | executor-med | PR#10 게이트 finding 마무리(README 산식·level 검증·커버리지 3건) | sonnet | medium(frontmatter) | Agent(tier) | pass (test-lint 36/36) |
+| 2026-08-19 | executor-med | 위임 로그 마감 + 이번 라운드 기록 | sonnet | medium(frontmatter) | Agent(tier) | pass |
