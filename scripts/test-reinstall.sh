@@ -26,14 +26,44 @@
 # existed — that path had never been exercised end-to-end before. Case 20
 # is the no-.claude-at-all case, case 21 is .claude-exists-but-no-skills-
 # or-agents-yet (already worked pre-fix; kept as an explicit lock), case 22
-# is install-then-immediately-rollback, which must return to a truly empty
-# state (no skills-delegate-first, none of the 5 tier agent files) rather
-# than leaving them behind because the backup that preceded them was empty.
-# Non-vacuity for 20/22 is checked out-of-band the same way as 11/12: point
-# REINSTALL_BIN at a copy of reinstall.sh predating the NEW_INSTALL fix and
-# confirm case 20 exits non-zero (still hard-rejects) and case 22 fails to
-# even reach the rollback step (no backup to roll back from, since the
-# fresh install itself was rejected).
+# is install-then-immediately-rollback, which must clear the specific
+# "nothing installed" markers this project tracks — no skills-delegate-first
+# dir, none of the 5 tier agent files — rather than leaving them behind
+# because the backup that preceded them was empty. This is NOT the same
+# claim as "the .claude tree is completely empty afterward" and case22
+# does not assert that: empty parent directories (.claude/skills is always
+# recreated by do_rollback's unconditional `mkdir -p`, and .claude/agents
+# survives from the earlier install step — see docs/REINSTALL.md §5's "빈
+# 상위 디렉터리는 남는다" contract) are left behind on purpose; only the
+# tracked skill dir and tier agent files are asserted gone. Non-vacuity for
+# 20/22 is checked out-of-band the same way as 11/12:
+# point REINSTALL_BIN at a copy of reinstall.sh predating the NEW_INSTALL
+# fix and confirm case 20 exits non-zero (still hard-rejects) and case 22
+# fails to even reach the rollback step (no backup to roll back from, since
+# the fresh install itself was rejected).
+#
+# P5 followups (F2/F3/F7 regression locks, deploy-readiness adversarial
+# review round 2): case caseF3 covers the §0 advisory branch that used to
+# print nothing at all about hook registration on a completely fresh
+# machine (rc=0, silent half-install); caseF2 covers do_rollback's PLAN log
+# for the agents axis, which used to say restoration would be "skipped"
+# while the unchanged execution branch actually deletes the live tier 5
+# files; caseF7 covers do_rollback's pre-rollback-snapshot mkdir collision,
+# which used to die under `set -e` with zero diagnostic output before a
+# bare `VAR="$(cmd)"` assignment was folded into an `if` condition. F2 and
+# F7's non-vacuity fixtures use make_broken_copy_replace (substitutes the
+# exact pre-fix source text back in) instead of make_broken_copy (deletes
+# the region outright) — a bare deletion leaves a no-op branch that does
+# not reproduce either bug's actual symptom.
+#
+# P6-b (reverted): a change had briefly moved do_rollback's
+# `mkdir -p "$DST/.claude/skills"` from unconditional into the "backup has
+# skills-delegate-first content" branch, to avoid fabricating an empty
+# .claude/skills directory on a fresh-install rollback. codex review found
+# this had zero observable effect — install already unconditionally
+# creates .claude/skills, so the directory survives rollback either way —
+# and the move was reverted. caseRollbackRestore (below) remains as the
+# plain regression lock for the restore path itself.
 
 set -uo pipefail  # no -e: we want to run every case and tally results
 
@@ -83,10 +113,25 @@ run_reinstall() {
 # guards stay intact), so the matching new case can prove its assertion is
 # non-vacuous by running the identical scenario against the stripped copy
 # and confirming the old bug (not just "some failure") actually reproduces.
+#
+# P5-0: both fixture builders below self-verify with `cmp -s` that the
+# broken copy actually differs from $REINSTALL. Without this, a typo'd
+# marker name (or a guard whose markers got renamed/removed upstream) makes
+# sed/awk match nothing, silently producing a "broken" copy that is
+# byte-identical to the real script — every non-vacuity case built on it
+# would then report a false PASS (it would just be re-running the fixed
+# script against itself) instead of catching the real pre-fix bug. A
+# mismatch here is a fixture-authoring error, not a case failure, so it
+# aborts the whole suite immediately with a clear diagnostic rather than
+# quietly letting downstream cases "pass" for the wrong reason.
 make_broken_copy() {
   local marker="$1" out="$2"
   sed "/# ${marker}-GUARD-START/,/# ${marker}-GUARD-END/d" "$REINSTALL" > "$out"
   chmod +x "$out"
+  if cmp -s "$REINSTALL" "$out"; then
+    echo "make_broken_copy: $out is byte-identical to $REINSTALL — sed removed nothing for marker '$marker' (typo'd marker, or the ${marker}-GUARD-START/END markers were renamed/removed in reinstall.sh). Aborting suite — this fixture cannot prove non-vacuity." >&2
+    exit 1
+  fi
 }
 BROKEN_P1="$SANDBOX_ROOT/reinstall-broken-p1.sh"
 BROKEN_P2="$SANDBOX_ROOT/reinstall-broken-p2.sh"
@@ -94,6 +139,98 @@ BROKEN_P3="$SANDBOX_ROOT/reinstall-broken-p3.sh"
 make_broken_copy P1 "$BROKEN_P1"
 make_broken_copy P2 "$BROKEN_P2"
 make_broken_copy P3 "$BROKEN_P3"
+
+# P5-3: make_broken_copy_replace <marker> <snippet-file> <out> — like
+# make_broken_copy, but SUBSTITUTES the marked region with pre-fix source
+# text instead of deleting it outright. Some pre-fix bugs (F-2's plan/exec
+# wording mismatch, F-7's bare-assignment-under-set-e death) only reproduce
+# when the ORIGINAL pre-fix statement is present in its original form —
+# deleting the region entirely leaves an empty branch/no-op, which does not
+# reproduce those two bugs' actual symptoms. `sed`'s `r`+`d` combination
+# can't do an ordered replace-in-place cleanly (its `r` queues the inserted
+# text to appear only after the CURRENT input line is fully processed,
+# which fights with `d` deleting a whole range), so this uses awk instead:
+# stream every line through, and when the START marker line is seen, emit
+# the snippet file's contents in place of the marked region (then skip
+# every line up to and including the END marker).
+make_broken_copy_replace() {
+  local marker="$1" snippet_file="$2" out="$3"
+  awk -v start="# ${marker}-GUARD-START" -v end="# ${marker}-GUARD-END" -v snippet="$snippet_file" '
+    index($0, start) { skip=1; while ((getline line < snippet) > 0) print line; close(snippet); next }
+    index($0, end) { skip=0; next }
+    skip { next }
+    { print }
+  ' "$REINSTALL" > "$out"
+  chmod +x "$out"
+  if cmp -s "$REINSTALL" "$out"; then
+    echo "make_broken_copy_replace: $out is byte-identical to $REINSTALL — markers '$marker' not found (typo'd marker, or the ${marker}-GUARD-START/END markers were renamed/removed in reinstall.sh). Aborting suite — this fixture cannot prove non-vacuity." >&2
+    exit 1
+  fi
+}
+
+# Pre-fix snippets (heredocs, not separate repo files) for the F-2 and F-7
+# replace-type fixtures. Both are the exact form that predates commit
+# c84b179 ("fix: make first-time adoption actually work, then seal what
+# that fix broke") — verified against `git show c84b179 -- scripts/reinstall.sh`.
+F2_PREFIX_SNIPPET="$SANDBOX_ROOT/f2-prefix-snippet.txt"
+cat > "$F2_PREFIX_SNIPPET" <<'EOF'
+    # Pre-fix form (predates commit c84b179). The rollback PLAN log claimed
+    # agent restoration would be skipped ("생략") even though the EXECUTION
+    # branch further down in do_rollback (unchanged by this fixture — only
+    # this plan-log region is replaced) still deletes the live tier 5 agent
+    # files unconditionally. This is the F-2 plan/execution wording
+    # mismatch this fixture reproduces.
+    log "백업에 agents/ 없음 — 에이전트 복원 생략"
+EOF
+
+F7_PREFIX_SNIPPET="$SANDBOX_ROOT/f7-prefix-snippet.txt"
+cat > "$F7_PREFIX_SNIPPET" <<'EOF'
+  # Pre-fix form (predates commit c84b179): a bare `VAR="$(cmd)"` assignment
+  # statement instead of folding it into the `if` condition. Under
+  # `set -e` (this script's top-level shebang line), if `cmd` (mkdir) fails,
+  # the assignment statement's own exit status equals mkdir's failing exit
+  # status, and bash's errexit kills the script right there — the
+  # `if [ $? -ne 0 ]` line below never runs, so no diagnostic is ever
+  # printed and the script dies silently.
+  MKDIR_ERR="$(mkdir "$PRE_ROLLBACK_DIR" 2>&1)"
+  if [ $? -ne 0 ]; then
+    if [ -e "$PRE_ROLLBACK_DIR" ]; then
+      err "스냅샷 디렉터리 충돌: $PRE_ROLLBACK_DIR 가 이미 존재한다 — 중단한다(다시 실행하라)."
+    else
+      err "스냅샷 디렉터리 생성 실패: $PRE_ROLLBACK_DIR ($MKDIR_ERR)"
+    fi
+    exit 1
+  fi
+EOF
+
+# B-16 pre-fix snippet: the exact overlay-the-whole-directory line that
+# predates the B-16 fix (marked "# B16-GUARD-START/END" in reinstall.sh,
+# following this file's existing <tag>-GUARD-START/END convention rather
+# than a literal "B16-SCOPE" string, since make_broken_copy_replace always
+# looks for "${marker}-GUARD-START/END" and this fixture reuses that
+# helper unmodified). Deleting the B16-GUARD region outright (make_broken_copy)
+# would leave a no-op restore step for the tier files themselves — a
+# different bug — so this must substitute the original overlay line back
+# in to reproduce B-16's actual symptom (a custom, non-tier agent file
+# silently reverting to backup-time content on rollback).
+B16_PREFIX_SNIPPET="$SANDBOX_ROOT/b16-prefix-snippet.txt"
+cat > "$B16_PREFIX_SNIPPET" <<'EOF'
+    # Pre-fix form (predates the B-16 fix): overlay the ENTIRE backed-up
+    # agents/ directory onto dst instead of restoring only the tier 5
+    # files reinstall actually manages. Any custom (non-tier) agent file
+    # present at backup time silently reverts to its backup-time content
+    # on rollback, clobbering whatever the user edited it to afterward.
+    cp -R "$ROLLBACK_DIR/agents/." "$DST/.claude/agents/"
+EOF
+
+BROKEN_F3="$SANDBOX_ROOT/reinstall-broken-f3.sh"
+BROKEN_F2="$SANDBOX_ROOT/reinstall-broken-f2.sh"
+BROKEN_F7="$SANDBOX_ROOT/reinstall-broken-f7.sh"
+BROKEN_B16="$SANDBOX_ROOT/reinstall-broken-b16.sh"
+make_broken_copy F3 "$BROKEN_F3"
+make_broken_copy_replace F2 "$F2_PREFIX_SNIPPET" "$BROKEN_F2"
+make_broken_copy_replace F7 "$F7_PREFIX_SNIPPET" "$BROKEN_F7"
+make_broken_copy_replace B16 "$B16_PREFIX_SNIPPET" "$BROKEN_B16"
 
 # run_broken <script> <home> <args...> — same REINSTALL_HOME safety wrapper
 # as run_reinstall, but against one of the broken copies above instead of
@@ -658,13 +795,17 @@ echo
 }
 
 # --- Case 22 (NEW_INSTALL rollback): install into a brand-new project
-# (case20's scenario) then immediately roll back -> must return to the
-# original "nothing installed" state (no skills-delegate-first dir, none of
-# the 5 tier agent files), not silently leave the freshly-planted files in
-# place because the backup happened to be empty. Also confirms the
-# fresh-install backup carries FRESH_INSTALL_MARKER, since that marker is
-# what lets do_rollback trust an empty backup instead of rejecting it as
-# "not a real backup". ---
+# (case20's scenario) then immediately roll back -> the tracked artifacts
+# this project installs (skills-delegate-first dir, the 5 tier agent
+# files) must be gone, not silently left in place because the backup
+# happened to be empty. This does NOT assert the .claude tree is
+# completely empty afterward — it only checks the tracked skill dir and
+# tier agent files; it does not check whether .claude/skills or
+# .claude/agents themselves (empty parent directories) still exist (see
+# docs/REINSTALL.md §5's "빈 상위 디렉터리는 남는다" contract). Also
+# confirms the fresh-install backup carries FRESH_INSTALL_MARKER, since
+# that marker is what lets do_rollback trust an empty backup instead of
+# rejecting it as "not a real backup". ---
 {
   d="$(case_dir case22)"
   run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
@@ -683,7 +824,7 @@ echo
       [ ! -e "$d/dst/.claude/agents/$agent.md" ] || { ok=0; detail="agent $agent.md survived rollback of a fresh install (overlay-style leftover)"; }
     done
   fi
-  if [ "$ok" -eq 1 ]; then record "case22_rollback_fresh_install_returns_to_empty" PASS; else record "case22_rollback_fresh_install_returns_to_empty" FAIL "$detail"; fi
+  if [ "$ok" -eq 1 ]; then record "case22_rollback_fresh_install_clears_tracked_paths" PASS; else record "case22_rollback_fresh_install_clears_tracked_paths" FAIL "$detail"; fi
 }
 
 # --- Case 23 (F-1 regression): a normal backup is created for a DST that
@@ -897,6 +1038,255 @@ echo
     [ "$rc2" -eq 0 ] && [ -d "$d2/dst/.claude/skills/delegate-first" ] && vac_ok=1
     if [ "$vac_ok" -eq 1 ]; then record "case27_nonvacuous_broken_p3_reproduces_bug" PASS; else record "case27_nonvacuous_broken_p3_reproduces_bug" FAIL "broken-p3 copy did not reproduce the pre-fix S14 file-clobber bug (rc2=$rc2)"; fi
   fi
+}
+
+# --- Case F3 (F-3 regression): a completely fresh machine — settings.json
+# missing from BOTH the global path ($home/.claude/settings.json) and the
+# project path ($dst/.claude/settings.json) — must print the "반쪽 설치"
+# hook-registration warning instead of the §0 advisory section going
+# entirely silent. Empty $home (case_dir's bare "home" dir has no
+# .claude/settings.json) + a $dst with no .claude at all (case_dir's bare
+# "dst" dir — no project settings.json either) reproduces exactly the
+# scenario the F-3 fix targets. ---
+{
+  d="$(case_dir caseF3)"
+  out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes 2>&1)"
+  rc=$?
+  ok=1
+  [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc out=$out"; }
+  echo "$out" | grep -qF "settings.json을 전역" || { ok=0; detail="missing F-3 half-install hook warning when settings.json absent everywhere"; }
+  if [ "$ok" -eq 1 ]; then record "caseF3_settings_json_absent_warns" PASS; else record "caseF3_settings_json_absent_warns" FAIL "$detail"; fi
+  # Non-vacuity: against the deletion-type broken copy (the F3-GUARD region
+  # — the entire else-branch body — stripped out, reproducing the exact
+  # pre-fix code, which had no else branch at all for this condition), the
+  # warning must be completely absent from output while the script still
+  # exits 0 — the actual pre-fix "silent half install" symptom: this one
+  # §0 advisory branch emits zero lines about hook registration and the
+  # script still reports success.
+  if [ "$ok" -eq 1 ]; then
+    d2="$(case_dir caseF3_vac)"
+    out2="$(run_broken "$BROKEN_F3" "$d2/home" --src "$REPO_ROOT" --dst "$d2/dst" --yes 2>&1)"
+    rc2=$?
+    vac_ok=0
+    if [ "$rc2" -eq 0 ] && ! echo "$out2" | grep -qF "settings.json을 전역"; then
+      vac_ok=1
+    fi
+    if [ "$vac_ok" -eq 1 ]; then record "caseF3_nonvacuous_broken_f3_reproduces_bug" PASS; else record "caseF3_nonvacuous_broken_f3_reproduces_bug" FAIL "broken-f3 copy did not reproduce the pre-fix silent half-install symptom (rc2=$rc2 out2=[$out2])"; fi
+  fi
+}
+
+# --- Case F2 (F-2 regression): do_rollback's PLAN output for a
+# fresh-install backup (no agents/ subtree, AGENTS_FRESH_INSTALL_MARKER
+# present — case20/22's shape) must describe the agents step as REMOVED
+# ("삭제됨"), matching what the execution phase actually does, not
+# "생략" (skipped) — which used to contradict the execution branch that
+# unconditionally rm -f's the tier 5 files regardless of what the plan text
+# claimed. Verifies both halves: the PLAN text (via --dry-run, so nothing
+# is mutated) AND that the real (non-dry-run) rollback actually does what
+# the plan said. ---
+{
+  d="$(case_dir caseF2)"
+  # Fresh (empty) project install — no pre-existing .claude at all — so the
+  # resulting backup has neither skills-delegate-first nor agents/, only
+  # FRESH_INSTALL_MARKER + AGENTS_FRESH_INSTALL_MARKER.
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak" ] || { ok=0; detail="no backup dir found after fresh install"; }
+  if [ "$ok" -eq 1 ]; then
+    [ -f "$bak/.reinstall-agents-backup-marker" ] || { ok=0; detail="fresh-install backup missing AGENTS_FRESH_INSTALL_MARKER — setup wrong for this case"; }
+  fi
+  if [ "$ok" -eq 1 ]; then
+    plan="$(run_reinstall "$d/home" --rollback "$bak" --dst "$d/dst" --dry-run --yes 2>&1)"
+    echo "$plan" | grep -qF "삭제됨" || { ok=0; detail="rollback plan does not say agents will be deleted: $plan"; }
+    if echo "$plan" | grep -qF "생략"; then
+      ok=0; detail="rollback plan still says 'skip' (생략) — F-2 plan/execution mismatch not fixed: $plan"
+    fi
+  fi
+  if [ "$ok" -eq 1 ]; then
+    out="$(run_reinstall "$d/home" --rollback "$bak" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    [ "$rc" -eq 0 ] || { ok=0; detail="actual rollback exit=$rc out=$out"; }
+    for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+      [ ! -e "$d/dst/.claude/agents/$agent.md" ] || { ok=0; detail="agent $agent.md survived rollback — execution did not match the plan's 'deleted' claim"; }
+    done
+  fi
+  if [ "$ok" -eq 1 ]; then record "caseF2_rollback_plan_matches_execution" PASS; else record "caseF2_rollback_plan_matches_execution" FAIL "$detail"; fi
+  # Non-vacuity: against the replace-type broken copy (pre-fix "생략"
+  # wording restored into the PLAN section only — the execution branch a
+  # few lines further down is untouched by this fixture), the plan must say
+  # "생략" while the untouched execution still deletes all 5 tier files —
+  # the actual F-2 plan/execution mismatch, not just "some text differs".
+  if [ "$ok" -eq 1 ]; then
+    d2="$(case_dir caseF2_vac)"
+    run_broken "$BROKEN_F2" "$d2/home" --src "$REPO_ROOT" --dst "$d2/dst" --yes >/dev/null 2>&1
+    bak2="$(ls -1dt "$d2/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+    vac_ok=0
+    if [ -n "$bak2" ]; then
+      plan2="$(run_broken "$BROKEN_F2" "$d2/home" --rollback "$bak2" --dst "$d2/dst" --dry-run --yes 2>&1)"
+      if echo "$plan2" | grep -qF "생략"; then
+        run_broken "$BROKEN_F2" "$d2/home" --rollback "$bak2" --dst "$d2/dst" --yes >/dev/null 2>&1
+        rc2=$?
+        deleted_all=1
+        for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+          [ ! -e "$d2/dst/.claude/agents/$agent.md" ] || deleted_all=0
+        done
+        [ "$rc2" -eq 0 ] && [ "$deleted_all" -eq 1 ] && vac_ok=1
+      fi
+    fi
+    if [ "$vac_ok" -eq 1 ]; then record "caseF2_nonvacuous_broken_f2_reproduces_bug" PASS; else record "caseF2_nonvacuous_broken_f2_reproduces_bug" FAIL "broken-f2 copy did not reproduce the pre-fix plan/execution mismatch"; fi
+  fi
+}
+
+# --- Case F7 (F-7 regression): do_rollback's pre-rollback-snapshot mkdir
+# collision must surface a diagnostic message before exiting non-zero, not
+# die silently under set -e. No permission bits are touched — the
+# collision is forced deterministically via REINSTALL_STAMP_OVERRIDE (same
+# test-only hook case17 uses) plus pre-creating the exact
+# pre-rollback-<stamp> directory do_rollback is about to mkdir. ---
+{
+  d="$(case_dir caseF7)"
+  build_basic_dst "$d/dst"
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak" ] || { ok=0; detail="no backup dir found after normal install"; }
+  fixed_stamp="fixedstamp-f7"
+  if [ "$ok" -eq 1 ]; then
+    mkdir -p "$d/home/.claude-backups/pre-rollback-$fixed_stamp"
+    out="$(REINSTALL_STAMP_OVERRIDE="$fixed_stamp" run_reinstall "$d/home" --rollback "$bak" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    [ "$rc" -ne 0 ] || { ok=0; detail="expected non-zero exit for pre-rollback snapshot dir collision, got 0"; }
+    echo "$out" | grep -qF "스냅샷 디렉터리 충돌" || { ok=0; detail="missing F-7 diagnostic message: $out"; }
+  fi
+  if [ "$ok" -eq 1 ]; then record "caseF7_prerollback_mkdir_collision_diagnosed" PASS; else record "caseF7_prerollback_mkdir_collision_diagnosed" FAIL "$detail"; fi
+  # Non-vacuity: against the replace-type broken copy (bare `VAR="$(cmd)"`
+  # assignment form, pre-dating the F-7 fix), the identical collision must
+  # still exit non-zero but WITHOUT the F-7 diagnostic message — set -e
+  # kills the script at the failing assignment before the
+  # `if [ $? -ne 0 ]` line (and its err calls) ever run. Output up to that
+  # point (the "=== 롤백 계획 ===" plan section, printed earlier in
+  # do_rollback before the pre-rollback-snapshot step) is expected and not
+  # part of the assertion — only the specific collision diagnostic's
+  # absence is.
+  if [ "$ok" -eq 1 ]; then
+    d2="$(case_dir caseF7_vac)"
+    build_basic_dst "$d2/dst"
+    run_broken "$BROKEN_F7" "$d2/home" --src "$REPO_ROOT" --dst "$d2/dst" --yes >/dev/null 2>&1
+    bak2="$(ls -1dt "$d2/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+    vac_ok=0
+    if [ -n "$bak2" ]; then
+      mkdir -p "$d2/home/.claude-backups/pre-rollback-$fixed_stamp"
+      out2="$(REINSTALL_STAMP_OVERRIDE="$fixed_stamp" run_broken "$BROKEN_F7" "$d2/home" --rollback "$bak2" --dst "$d2/dst" --yes 2>&1)"
+      rc2=$?
+      if [ "$rc2" -ne 0 ] && ! echo "$out2" | grep -qF "스냅샷 디렉터리 충돌"; then
+        vac_ok=1
+      fi
+    fi
+    if [ "$vac_ok" -eq 1 ]; then record "caseF7_nonvacuous_broken_f7_reproduces_bug" PASS; else record "caseF7_nonvacuous_broken_f7_reproduces_bug" FAIL "broken-f7 copy did not reproduce the pre-fix silent-death symptom (rc2=$rc2 out2=[$out2])"; fi
+  fi
+}
+
+# --- Case rollbackRestore (positive lock): an existing install's rollback
+# must restore skill content normally via the unconditional
+# `mkdir -p "$DST/.claude/skills"` + `cp -R` pair in do_rollback's
+# skills-restore branch. (A P6-b change had briefly moved that mkdir inside
+# the "backup has content" branch to avoid fabricating an empty
+# .claude/skills dir on fresh-install rollback; that move was reverted
+# after codex review found it had zero observable effect — install already
+# unconditionally creates .claude/skills, so the empty parent directory
+# survives rollback either way, see docs/REINSTALL.md §5's "빈 상위
+# 디렉터리는 남는다" contract. This case stays as the plain regression lock
+# for the restore path itself, independent of that now-reverted mkdir
+# placement.) ---
+{
+  d="$(case_dir caseRollbackRestore)"
+  build_basic_dst "$d/dst"
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak" ] || { ok=0; detail="no backup dir found after normal install"; }
+  if [ "$ok" -eq 1 ]; then
+    out="$(run_reinstall "$d/home" --rollback "$bak" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    [ "$rc" -eq 0 ] || { ok=0; detail="rollback exit=$rc out=$out"; }
+    [ -f "$d/dst/.claude/skills/delegate-first/SKILL.md" ] || { ok=0; detail="skills content not restored"; }
+    content="$(cat "$d/dst/.claude/skills/delegate-first/SKILL.md" 2>/dev/null)"
+    [ "$content" = "stale skill md" ] || { ok=0; detail="restored SKILL.md content does not match pre-install stale content: got [$content]"; }
+  fi
+  if [ "$ok" -eq 1 ]; then record "caseRollbackRestore_existing_install_rollback_restores_content" PASS; else record "caseRollbackRestore_existing_install_rollback_restores_content" FAIL "$detail"; fi
+}
+
+# --- Case B16 (data-loss fix): rollback restoring the tier 5 agent files
+# must not overwrite a custom (non-tier) agent file the user edited after
+# the backup was taken. Before this fix, do_rollback's agents restore step
+# did `cp -R "$ROLLBACK_DIR/agents/." "$DST/.claude/agents/"` — overlaying
+# the ENTIRE backed-up agents/ directory, not just the tier 5 files
+# reinstall actually manages — so any custom agent present at backup time
+# silently reverted to its backup-time content on rollback, clobbering
+# whatever the user had edited it to since. The fix narrows restoration to
+# TIER_AGENTS only (symmetric with the rm -f loop directly above it in
+# reinstall.sh), never touching a custom file's live content. This is a
+# scope narrowing, not a new guard: the deletion loop already only ever
+# touched tier 5 files; the restore loop now matches it. ---
+{
+  d="$(case_dir caseB16)"
+  build_basic_dst "$d/dst"  # plants only agents/executor-high.md (empty)
+  echo "OLD-CUSTOM" > "$d/dst/.claude/agents/my-custom.md"
+  run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+    [ -f "$d/dst/.claude/agents/$agent.md" ] || { ok=0; detail="setup failed: $agent.md missing after reinstall"; }
+  done
+  [ -f "$d/dst/.claude/agents/my-custom.md" ] || { ok=0; detail="setup failed: my-custom.md missing after reinstall (reinstall must not touch non-tier agent files)"; }
+  if [ "$ok" -eq 1 ]; then
+    bak="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+    [ -n "$bak" ] || { ok=0; detail="no backup dir found after install"; }
+    [ "$ok" -eq 1 ] && { [ -f "$bak/agents/my-custom.md" ] || { ok=0; detail="backup did not capture my-custom.md"; }; }
+  fi
+  if [ "$ok" -eq 1 ]; then
+    # The user edits the custom agent AFTER the backup exists, before rollback.
+    echo "NEW-CUSTOM-EDITED" > "$d/dst/.claude/agents/my-custom.md"
+    out="$(run_reinstall "$d/home" --rollback "$bak" --dst "$d/dst" --yes 2>&1)"
+    rc=$?
+    [ "$rc" -eq 0 ] || { ok=0; detail="rollback exit=$rc out=$out"; }
+    if [ "$ok" -eq 1 ]; then
+      content="$(cat "$d/dst/.claude/agents/my-custom.md" 2>/dev/null)"
+      [ "$content" = "NEW-CUSTOM-EDITED" ] || { ok=0; detail="B-16 regression: custom agent reverted to [$content] instead of surviving as the user's edit (NEW-CUSTOM-EDITED)"; }
+    fi
+    # Tier 5 still behave per F-3: executor-high.md (present at backup
+    # time) restored, the other 4 (absent from backup) removed.
+    for agent in explorer-low executor-med reviewer-high judge-max; do
+      [ ! -e "$d/dst/.claude/agents/$agent.md" ] || { ok=0; detail="tier restore regression: $agent.md survived rollback though absent from backup"; }
+    done
+    [ -f "$d/dst/.claude/agents/executor-high.md" ] || { ok=0; detail="tier restore regression: executor-high.md missing after rollback"; }
+  fi
+  if [ "$ok" -eq 1 ]; then record "caseB16_rollback_preserves_custom_agent_edit" PASS; else record "caseB16_rollback_preserves_custom_agent_edit" FAIL "$detail"; fi
+}
+
+# --- Case B16 non-vacuity: against the pre-fix form (overlay the ENTIRE
+# backed-up agents/ dir instead of restoring just TIER_AGENTS), the
+# identical scenario above must FAIL — the custom agent must revert to
+# OLD-CUSTOM instead of surviving as NEW-CUSTOM-EDITED. ---
+{
+  d="$(case_dir caseB16_vac)"
+  build_basic_dst "$d/dst"
+  echo "OLD-CUSTOM" > "$d/dst/.claude/agents/my-custom.md"
+  run_broken "$BROKEN_B16" "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes >/dev/null 2>&1
+  ok=1
+  bak="$(ls -1dt "$d/home/.claude-backups/delegate-first-"* 2>/dev/null | head -1)"
+  [ -n "$bak" ] || { ok=0; detail="no backup dir found after install (setup)"; }
+  if [ "$ok" -eq 1 ]; then
+    echo "NEW-CUSTOM-EDITED" > "$d/dst/.claude/agents/my-custom.md"
+    out2="$(run_broken "$BROKEN_B16" "$d/home" --rollback "$bak" --dst "$d/dst" --yes 2>&1)"
+    rc2=$?
+    [ "$rc2" -eq 0 ] || { ok=0; detail="broken-B16 rollback exit=$rc2 out=$out2 (expected rc=0 — B-16 is a silent overwrite, not a crash)"; }
+    if [ "$ok" -eq 1 ]; then
+      content2="$(cat "$d/dst/.claude/agents/my-custom.md" 2>/dev/null)"
+      [ "$content2" = "OLD-CUSTOM" ] || { ok=0; detail="broken-b16 copy did not reproduce the pre-fix data-loss symptom: got [$content2], expected OLD-CUSTOM"; }
+    fi
+  fi
+  if [ "$ok" -eq 1 ]; then record "caseB16_nonvacuous_broken_b16_reproduces_bug" PASS; else record "caseB16_nonvacuous_broken_b16_reproduces_bug" FAIL "$detail"; fi
 }
 
 echo

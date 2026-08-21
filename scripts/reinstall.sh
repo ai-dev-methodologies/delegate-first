@@ -309,11 +309,13 @@ do_rollback() {
   if [ -d "$ROLLBACK_DIR/agents" ]; then
     log "대상 에이전트: $DST/.claude/agents (tier 5종만 백업 내용으로 교체 복원 — F-3, 아래 참고)"
   else
+    # F2-GUARD-START
     # F-2: 위 guard가 이미 통과했다는 것은 여기 도달한 시점에
     # AGENTS_FRESH_INSTALL_MARKER가 존재함(=진짜 신규 설치 백업)을 뜻한다.
     # 실행 분기(§3)는 이 경우 tier 5종을 "생략"하지 않고 삭제한다 — 계획
     # 출력이 실행과 일치하도록 문구를 맞춘다.
     log "대상 에이전트: $DST/.claude/agents (백업에 agents/ 없음 — 설치 전 tier 5종이 없었던 것으로 보고 삭제됨)"
+    # F2-GUARD-END
   fi
   if [ "$ROLLBACK_GLOBAL" -eq 1 ]; then
     log "전역 훅/규칙 롤백 요청됨(--rollback-global) — 백업이 '전파 전' 사본이 아닐 수 있다는 점을 감안할 것"
@@ -336,6 +338,7 @@ do_rollback() {
   PRE_ROLLBACK_STAMP="${REINSTALL_STAMP_OVERRIDE:-$(date +%Y%m%d-%H%M%S)-$$}"
   PRE_ROLLBACK_DIR="$BACKUP_ROOT/pre-rollback-$PRE_ROLLBACK_STAMP"
   mkdir -p "$BACKUP_ROOT"
+  # F7-GUARD-START
   # F-7: under `set -e`, `VAR="$(cmd)"` as a bare statement propagates
   # cmd's failure straight into the shell's errexit — mkdir's failure would
   # kill the script before the `if [ $? -ne 0 ]` below ever ran, producing
@@ -349,6 +352,7 @@ do_rollback() {
     fi
     exit 1
   fi
+  # F7-GUARD-END
   if [ -d "$SKILL_TARGET_DIR" ]; then
     cp -R "$SKILL_TARGET_DIR" "$PRE_ROLLBACK_DIR/skills-delegate-first"
   fi
@@ -385,7 +389,7 @@ do_rollback() {
   fi
 
   if [ -d "$ROLLBACK_DIR/agents" ]; then
-    log "에이전트 복원 (F-3: overlay가 아니라 교체 복원)"
+    log "에이전트 복원 (F-3: overlay가 아니라 교체 복원 / B-16: 복원 범위도 tier 5종으로 한정)"
     mkdir -p "$DST/.claude/agents"
     # F-3: 단순 overlay(cp -R backup/. dst/)는 재설치가 새로 심은 tier
     # 정의를 백업에 없다는 이유만으로는 지우지 않는다 — 백업 시점 이후
@@ -398,7 +402,23 @@ do_rollback() {
     for agent in "${TIER_AGENTS[@]}"; do
       rm -f "$DST/.claude/agents/$agent.md"
     done
-    cp -R "$ROLLBACK_DIR/agents/." "$DST/.claude/agents/"
+    # B16-GUARD-START
+    # B-16: 바로 위 rm -f는 이미 tier 5종만 지우는데, 복원 단계는 예전에
+    # `cp -R "$ROLLBACK_DIR/agents/." "$DST/.claude/agents/"`로 백업의
+    # agents/ 디렉터리 전체를 덮어썼다 — 삭제 범위(tier 5종)와 복원
+    # 범위(전체)가 비대칭이라, 재설치가 건드리지도 않은 커스텀 에이전트
+    # 파일까지 백업 시점 내용으로 되돌아갔다(실측: 사용자가 롤백 전에
+    # 커스텀 에이전트를 편집해두면 그 편집이 소실된다). 새 가드를
+    # 추가하는 게 아니라, 기존 범위 초과 복원을 rm -f 루프와 대칭이
+    # 되도록 tier 5종으로 좁힌다. 백업에 그 tier 파일이 없으면(예: 최초
+    # 설치 전이라 아직 없던 tier) 복원하지 않고 위 rm -f로 지운 채
+    # 남긴다 — 이는 F-3 주석이 이미 밝힌 기존 의미론 그대로다.
+    for agent in "${TIER_AGENTS[@]}"; do
+      if [ -f "$ROLLBACK_DIR/agents/$agent.md" ]; then
+        cp "$ROLLBACK_DIR/agents/$agent.md" "$DST/.claude/agents/$agent.md"
+      fi
+    done
+    # B16-GUARD-END
   else
     # NEW_INSTALL: 백업에 agents/ 자체가 없다는 것은 설치 전 $DST/.claude/agents
     # 디렉터리가 아예 없었다는 뜻이다(§1은 존재하는 디렉터리만 백업한다) —
@@ -497,6 +517,7 @@ if [ -f "$GLOBAL_ROOT/.claude/settings.json" ] || [ -f "$DST/.claude/settings.js
   else
     log "정보: enforce-subagent-model 훅 등록을 settings.json에서 찾지 못했다 — §4-2 스모크 해석 시 참고할 것"
   fi
+# F3-GUARD-START
 else
   # F-3: settings.json이 전역/프로젝트 어디에도 없는 완전 신규 머신에서는
   # 위 두 분기 모두 스킵되어 훅 등록에 대한 언급이 한 줄도 나오지 않는다
@@ -504,6 +525,7 @@ else
   # 반쪽 설치가 조용히 끝난다. README.md §설치와 동일한 사실을 여기서도
   # 명시적으로 경고한다.
   log "경고: settings.json을 전역($GLOBAL_ROOT/.claude/settings.json)/프로젝트($DST/.claude/settings.json) 어디서도 찾지 못했다 — 이 스크립트는 skills + tier 에이전트만 설치하며 훅 파일도 settings.json 등록도 하지 않는다. README.md §설치의 '훅을 별도로 등록한다' 단계를 수행하지 않으면 강제(PreToolUse 차단)가 발효되지 않은 반쪽 설치로 남는다."
+# F3-GUARD-END
 fi
 if [ -d "$DST/.claude/agents" ]; then
   for agent in "${TIER_AGENTS[@]}"; do
