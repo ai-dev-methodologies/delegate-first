@@ -65,6 +65,16 @@ SKILL.md (원칙 + 5단계 체크리스트)
 
 ## 설치 (택1)
 
+**처음 설치하는 사람은 이 순서를 따른다** (신규/기존 무관 — 최초 1회):
+
+1. 아래 A) 절차(수동 `cp`, 또는 `scripts/reinstall.sh`)로 skills + tier 에이전트를 깐다.
+2. **훅을 별도로 등록한다** — A) 절차든 `scripts/reinstall.sh`든 이 단계를 대신해주지 않는다. `.claude/settings.json.example`을 복사해 `PreToolUse`에 등록하는 절차는 아래 A) 안의 "훅은 파일을 두는 것만으로는 작동하지 않는다" 문단을 따른다.
+3. [검증 3단계](#검증-3단계-설치-후-반드시-실행)를 돌려 스킬·훅·tier 에이전트가 실제로 발효 중인지 확인한다.
+
+이후 정본 최신판으로 **갱신**할 때는 1번을 `scripts/reinstall.sh`(`--dst` 지정, 신규/기존 겸용)로 반복하면 된다 — `cp -R` 수동 절차를 재실행하면 병합 문제(위 A) 참고)가 생긴다.
+
+> **`scripts/reinstall.sh`는 skills + tier 에이전트만 설치한다 — 훅 파일도, `settings.json` 등록도 하지 않는다(기본값 기준. `--propagate-global`을 줘도 훅/규칙을 **전역**(`$HOME/.claude`)에만 복사할 뿐 어느 경우든 `settings.json` 등록은 스크립트 밖의 사람 몫이다).** 스크립트만 돌리고 끝내면 강제(PreToolUse 차단)가 발효되지 않은 **반쪽 설치**다 — 위 2번을 반드시 별도로 수행한다.
+
 ### A) 프로젝트 로컬 설치 (권장, 빠름)
 
 이 레포의 `.claude/` 트리를 대상 프로젝트의 `.claude/` 아래로 복사한다.
@@ -79,6 +89,10 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$DST/.claude/hooks/"
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
 cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
 ```
+
+`SRC`/`DST`는 실제 절대경로로 교체해야 한다 — `<...>` placeholder를 그대로 두고 실행하면 `cp`가 아니라 셸이 `<`를 리다이렉션으로 해석해 1번째 줄에서 즉시 syntax error로 죽는다(2026-08-21 샌드박스 실측 — 아무 파일도 건드리기 전에 죽으므로 안전하지만, 성공한 것으로 착각할 소지는 없다).
+
+이 경로는 **`$DST`에 `delegate-first`가 아직 없는 신규 설치 전용**이다. `cp -R`은 대상 디렉터리가 이미 있으면 덮어쓰기가 아니라 병합(merge)한다 — 정본에서 이미 삭제된 파일이 `$DST` 쪽에 그대로 남는다(2026-08-21 샌드박스 실측: 재실행 시 정본에 없는 구 파일이 지워지지 않고 생존). 이미 설치된 프로젝트를 정본 최신판으로 갱신/재설치할 때는 이 블록을 재실행하지 말고 `scripts/reinstall.sh`(copy-to-temp-then-swap + 백업/롤백)를 쓴다.
 
 `subagent-model-routing.md` 복사는 **선택 사항**이다 — `.claude/rules/`는 자동 로드 경로가 아니므로, 이 규칙에 효력을 주려면 설치 프로젝트의 `CLAUDE.md`에서 명시적으로 참조해야 한다(참조하지 않으면 파일만 있고 로드되지 않는다).
 

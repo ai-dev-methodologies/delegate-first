@@ -65,7 +65,11 @@ Usage:
                          script's own repo root.
   --dst <path>          Target project to (re)install into. REQUIRED, no
                          default (installing into the wrong path is a
-                         destructive mistake).
+                         destructive mistake). The project directory itself
+                         must already exist, but it does NOT need a
+                         .claude/ tree yet — a brand-new project with no
+                         .claude at all is a supported first-time install,
+                         not just a re-install of an existing local copy.
   --dry-run             Print the plan (backup path, replace targets,
                          succession list, diff summary) and exit. Nothing
                          is written.
@@ -83,6 +87,17 @@ Usage:
   --rollback-global     Pair with --rollback to also restore the global
                          hook/rule from that backup, if present.
   -h, --help            Show this help.
+
+Examples:
+  # 1. First look at the plan without changing anything:
+  reinstall.sh --src /path/to/delegate-first --dst /path/to/your-project --dry-run
+
+  # 2. Actually install (prompts for confirmation unless --yes):
+  reinstall.sh --src /path/to/delegate-first --dst /path/to/your-project --yes
+
+  # 3. Something went wrong — undo it (the install step above prints the
+  #    exact backup path to use here):
+  reinstall.sh --rollback /path/to/.claude-backups/delegate-first-<stamp> --dst /path/to/your-project --yes
 EOF
 }
 
@@ -107,6 +122,24 @@ RULES_TARGET_DIR="$GLOBAL_ROOT/.claude/rules"
 HOOKS_TARGET_DIR="$GLOBAL_ROOT/.claude/hooks"
 RULE_FILE_NAME="subagent-model-routing.md"
 HOOK_FILE_NAME="enforce-subagent-model.cjs"
+# NEW_INSTALL: §1 always drops this empty sentinel into every backup it
+# creates, regardless of whether there was anything to back up. It exists
+# solely so do_rollback can tell "an authentic backup that happens to be
+# empty because the reinstall it preceded was a brand-new install (nothing
+# existed yet)" apart from "a garbage/wrong path that isn't a real backup
+# at all" — see do_rollback's guard block below. Backups made by any
+# version of this script predating this fix will not have the marker; that
+# is fine, because the only place absence of the marker matters is the
+# fresh-install branch this fix introduces (a pre-fix backup could not have
+# been produced by a fresh install in the first place, since fresh installs
+# were hard-rejected before this fix).
+FRESH_INSTALL_MARKER=".reinstall-backup-marker"
+# F-1: separate marker for the agents/ axis. A single marker covering both
+# axes cannot distinguish "backup lost its agents/ content" from "backup
+# lost its skills-delegate-first content" — each axis needs its own proof
+# that it was genuinely absent (not just missing from a corrupted/emptied
+# backup) before do_rollback treats that axis as a real fresh install.
+AGENTS_FRESH_INSTALL_MARKER=".reinstall-agents-backup-marker"
 # Moved above do_rollback (was previously declared further down, after the
 # rollback dispatch call at the bottom of this file) — do_rollback's F-3 fix
 # needs this list to know which agent files a reinstall could have planted,
@@ -172,16 +205,70 @@ resolve_path() {
 
 do_rollback() {
   [ -n "$DST" ] || { err "--rollback에는 --dst도 필요하다 — 복원 대상이 없다."; exit 1; }
-  [ -d "$ROLLBACK_DIR/skills-delegate-first" ] || {
+  # P2-GUARD-START
+  # P2: 설치 경로(§0, ":438" 부근)는 --dst가 실제 존재하는 디렉터리인지
+  # 확인하는데 롤백 경로는 문자열이 비어있지 않은지만 확인했다 — 오타 난
+  # --dst를 주면 그 경로에 새 트리를 만들어놓고 rc=0으로 "성공"을 보고한다
+  # (실제 대상은 손대지 않으니 데이터 손실은 없지만, 사용자는 롤백된 줄
+  # 안다). 설치 경로와 대칭으로 존재 확인을 추가한다.
+  [ -d "$DST" ] || { err "--dst 미설정/오경로: $DST (디렉터리 자체가 없다) — 오타를 확인하라."; exit 1; }
+  # P2-GUARD-END
+  # NEW_INSTALL: 정상 경로(skills-delegate-first가 백업에 있음)와, 백업이
+  # 만들어질 당시 설치 전 상태가 애초에 "아무것도 없었던" 신규 설치였던
+  # 경로(§1이 백업할 기존 스킬 디렉터리가 없어 skills-delegate-first 자체를
+  # 만들지 않은 경우)를 구분한다. 후자는 FRESH_INSTALL_MARKER로만 "§1이
+  # 실제로 만든 진짜 백업"임을 증명하고, 그 외(경로 오타·무관한 디렉터리)는
+  # 여전히 거부한다.
+  if [ -d "$ROLLBACK_DIR/skills-delegate-first" ]; then
+    # P4: 디렉터리만 있고 내용이 비어 있는(또는 아무 백업이나 가리키는) 경로를
+    # 백업으로 오인하지 않도록, §1이 항상 만드는 SKILL.md의 존재까지 확인한다.
+    [ -f "$ROLLBACK_DIR/skills-delegate-first/SKILL.md" ] || {
+      err "백업 불완전: $ROLLBACK_DIR/skills-delegate-first 에 SKILL.md가 없다 — 이 디렉터리는 §1이 만든 진짜 백업이 아닐 수 있다."
+      exit 1
+    }
+  elif [ -f "$ROLLBACK_DIR/$FRESH_INSTALL_MARKER" ]; then
+    log "정보: 백업에 skills-delegate-first 없음 — 신규 설치(설치 전 스킬 디렉터리 자체가 없었음) 백업으로 확인됨. 롤백은 스킬 디렉터리를 제거하는 것으로 처리한다."
+  else
     err "백업 없음: $ROLLBACK_DIR — 경로가 §1이 실제로 백업을 만든 그 디렉터리인지 확인하라."
     exit 1
-  }
-  # P4: 디렉터리만 있고 내용이 비어 있는(또는 아무 백업이나 가리키는) 경로를
-  # 백업으로 오인하지 않도록, §1이 항상 만드는 SKILL.md의 존재까지 확인한다.
-  [ -f "$ROLLBACK_DIR/skills-delegate-first/SKILL.md" ] || {
-    err "백업 불완전: $ROLLBACK_DIR/skills-delegate-first 에 SKILL.md가 없다 — 이 디렉터리는 §1이 만든 진짜 백업이 아닐 수 있다."
+  fi
+
+  # F-1: agents/ 축도 같은 추론이 필요하다. 백업에 agents/가 없다는 것이
+  # "설치 전 agents 디렉터리 자체가 없었다"(진짜 신규 설치)를 뜻하는지,
+  # 아니면 "백업 생성 후 agents/만 내용이 소실됐다"를 뜻하는지 마커 없이는
+  # 구분할 수 없다 — 후자를 전자로 오인하면 아래 §3의 tier 5종 삭제 분기가
+  # 소실을 신규 설치로 착각해 live의 tier 5종을 지운다(F-1과 같은 계열의
+  # 결함, 축만 다르다). AGENTS_FRESH_INSTALL_MARKER로 증명되지 않으면
+  # 파괴적 단계 진입 전에 거부한다.
+  if [ -d "$ROLLBACK_DIR/agents" ]; then
+    : # 정상: 에이전트 백업 디렉터리가 있음 (아래 P1 가드가 내용까지 확인한다)
+    # P1-GUARD-START
+    # P1: 디렉터리 존재만으로는 불충분하다 — skills 축이 SKILL.md 존재까지
+    # 확인해 "디렉터리는 있지만 내용이 비었음"을 거부하는 것과 대칭으로,
+    # agents 축도 tier 파일이 하나도 없는 상태(백업 생성 후
+    # `rm $BAK/agents/*`로 디렉터리는 남기고 내용만 지워진 경우)를 "정상
+    # 백업"으로 오인하지 않는다. F-1의 자기 논리("내용 소실은 거부")가 두
+    # 축에서 같은 강도로 적용돼야 한다.
+    AGENTS_HAS_TIER_FILE=0
+    for agent in "${TIER_AGENTS[@]}"; do
+      if [ -f "$ROLLBACK_DIR/agents/$agent.md" ]; then
+        AGENTS_HAS_TIER_FILE=1
+        break
+      fi
+    done
+    if [ "$AGENTS_HAS_TIER_FILE" -eq 0 ]; then
+      err "백업 불완전: $ROLLBACK_DIR/agents 디렉터리는 있지만 tier 에이전트 파일이 하나도 없다."
+      err "이 상태로 진행하면 내용 소실(예: 백업 생성 후 agents/ 내용만 삭제)을 신규 설치로 오인해 live의 tier 5종 에이전트를 삭제하게 된다 — 중단한다."
+      exit 1
+    fi
+    # P1-GUARD-END
+  elif [ -f "$ROLLBACK_DIR/$AGENTS_FRESH_INSTALL_MARKER" ]; then
+    log "정보: 백업에 agents/ 없음 — 신규 설치(설치 전 agents 디렉터리 자체가 없었음) 백업으로 확인됨. 롤백은 tier 5종을 제거하는 것으로 처리한다."
+  else
+    err "백업 불완전: $ROLLBACK_DIR 에 agents/도 신규 설치 마커도 없다 — 이 백업은 tier 에이전트 내용을 잃어버렸을 수 있다(예: 백업 생성 후 agents/만 지워짐)."
+    err "이 상태로 진행하면 소실을 신규 설치로 오인해 live의 tier 5종 에이전트를 삭제하게 된다 — 중단한다. 올바른 백업 경로인지 확인하라."
     exit 1
-  }
+  fi
 
   # F-4: --rollback 디렉터리가 복원 대상(스킬 디렉터리)이나 스왑 스크래치
   # 경로(.new/.old) 내부이거나 그 자신이면, 아래 "잔여 .new/.old 정리"·
@@ -222,7 +309,11 @@ do_rollback() {
   if [ -d "$ROLLBACK_DIR/agents" ]; then
     log "대상 에이전트: $DST/.claude/agents (tier 5종만 백업 내용으로 교체 복원 — F-3, 아래 참고)"
   else
-    log "백업에 agents/ 없음 — 에이전트 복원 생략"
+    # F-2: 위 guard가 이미 통과했다는 것은 여기 도달한 시점에
+    # AGENTS_FRESH_INSTALL_MARKER가 존재함(=진짜 신규 설치 백업)을 뜻한다.
+    # 실행 분기(§3)는 이 경우 tier 5종을 "생략"하지 않고 삭제한다 — 계획
+    # 출력이 실행과 일치하도록 문구를 맞춘다.
+    log "대상 에이전트: $DST/.claude/agents (백업에 agents/ 없음 — 설치 전 tier 5종이 없었던 것으로 보고 삭제됨)"
   fi
   if [ "$ROLLBACK_GLOBAL" -eq 1 ]; then
     log "전역 훅/규칙 롤백 요청됨(--rollback-global) — 백업이 '전파 전' 사본이 아닐 수 있다는 점을 감안할 것"
@@ -245,8 +336,12 @@ do_rollback() {
   PRE_ROLLBACK_STAMP="${REINSTALL_STAMP_OVERRIDE:-$(date +%Y%m%d-%H%M%S)-$$}"
   PRE_ROLLBACK_DIR="$BACKUP_ROOT/pre-rollback-$PRE_ROLLBACK_STAMP"
   mkdir -p "$BACKUP_ROOT"
-  MKDIR_ERR="$(mkdir "$PRE_ROLLBACK_DIR" 2>&1)"
-  if [ $? -ne 0 ]; then
+  # F-7: under `set -e`, `VAR="$(cmd)"` as a bare statement propagates
+  # cmd's failure straight into the shell's errexit — mkdir's failure would
+  # kill the script before the `if [ $? -ne 0 ]` below ever ran, producing
+  # rc=1 with zero output. Folding the assignment into the `if` condition
+  # itself is exempt from errexit, so the failure path actually executes.
+  if ! MKDIR_ERR="$(mkdir "$PRE_ROLLBACK_DIR" 2>&1)"; then
     if [ -e "$PRE_ROLLBACK_DIR" ]; then
       err "스냅샷 디렉터리 충돌: $PRE_ROLLBACK_DIR 가 이미 존재한다 — 중단한다(다시 실행하라)."
     else
@@ -260,6 +355,17 @@ do_rollback() {
   if [ -d "$DST/.claude/agents" ]; then
     cp -R "$DST/.claude/agents" "$PRE_ROLLBACK_DIR/agents"
   fi
+  # NEW_INSTALL / F-1: 이 스냅샷도 §1의 백업과 같은 이유로 마커를 남기되,
+  # 그 축이 스냅샷 시점에 실제로 부재했을 때만 쓴다. 무조건 쓰면 "위
+  # cp -R이 내용을 담았는데도 마커가 같이 있는" 상태가 되어, 이 스냅샷을
+  # 나중에 --rollback 소스로 쓸 때 do_rollback의 guard가 "내용 소실"과
+  # "진짜 신규 설치"를 구분하지 못한다(F-1 재발과 동일한 결함 패턴).
+  if [ ! -d "$SKILL_TARGET_DIR" ]; then
+    : > "$PRE_ROLLBACK_DIR/$FRESH_INSTALL_MARKER"
+  fi
+  if [ ! -d "$DST/.claude/agents" ]; then
+    : > "$PRE_ROLLBACK_DIR/$AGENTS_FRESH_INSTALL_MARKER"
+  fi
   log "롤백 직전 스냅샷 저장: $PRE_ROLLBACK_DIR (문제 생기면 --rollback \"$PRE_ROLLBACK_DIR\" --dst \"$DST\")"
 
   log "잔여 .new/.old 정리"
@@ -268,7 +374,15 @@ do_rollback() {
   log "스킬 디렉터리 복원"
   mkdir -p "$DST/.claude/skills"
   rm -rf "$SKILL_TARGET_DIR"
-  cp -R "$ROLLBACK_DIR/skills-delegate-first" "$SKILL_TARGET_DIR"
+  if [ -d "$ROLLBACK_DIR/skills-delegate-first" ]; then
+    cp -R "$ROLLBACK_DIR/skills-delegate-first" "$SKILL_TARGET_DIR"
+  else
+    # NEW_INSTALL: 백업에 skills-delegate-first가 없다는 것은 위 guard에서
+    # FRESH_INSTALL_MARKER로 이미 "설치 전엔 진짜 아무것도 없었다"고 확인된
+    # 상태다 — 복원할 대상이 없으므로 위 rm -rf로 제거된 채로 둔다(= 설치
+    # 전 상태로 정확히 복귀).
+    log "복원 대상 없음(신규 설치 백업) — $SKILL_TARGET_DIR 를 제거한 상태로 둔다"
+  fi
 
   if [ -d "$ROLLBACK_DIR/agents" ]; then
     log "에이전트 복원 (F-3: overlay가 아니라 교체 복원)"
@@ -286,7 +400,17 @@ do_rollback() {
     done
     cp -R "$ROLLBACK_DIR/agents/." "$DST/.claude/agents/"
   else
-    log "스킵함: agents (백업에 소스 없음)"
+    # NEW_INSTALL: 백업에 agents/ 자체가 없다는 것은 설치 전 $DST/.claude/agents
+    # 디렉터리가 아예 없었다는 뜻이다(§1은 존재하는 디렉터리만 백업한다) —
+    # 즉 tier 5종 전부가 이번 설치로 새로 심긴 것이다. 예전에는 여기서
+    # 그냥 스킵해 이 5개 파일이 overlay처럼 살아남았다(위 F-3와 같은
+    # 결함의 변형: "백업이 아예 없음" 케이스가 F-3의 일반화를 놓쳤다).
+    # 설치 전 상태(=agents/ 자체가 없었음)로 정확히 되돌리려면 이 5종도
+    # 지워야 한다.
+    log "에이전트 복원: 백업에 agents/ 자체가 없음 — 설치 전 tier 5종이 없었던 것으로 보고 제거한다(overlay 아님)"
+    for agent in "${TIER_AGENTS[@]}"; do
+      rm -f "$DST/.claude/agents/$agent.md"
+    done
   fi
 
   if [ "$ROLLBACK_GLOBAL" -eq 1 ]; then
@@ -330,10 +454,28 @@ SKILL_SRC_DIR="$SRC/.claude/skills/delegate-first"
 for agent in "${TIER_AGENTS[@]}"; do
   [ -f "$SRC/.claude/agents/$agent.md" ] || { err "SRC 미설정/오경로: $SRC (agents/$agent.md 없음)"; exit 1; }
 done
-[ -d "$DST/.claude" ] || {
-  err "DST 미설정/오경로: $DST (.claude 없음). 신규 설치는 이 스크립트가 아니라 README.md §설치를 따른다."
+# NEW_INSTALL: $DST/.claude가 아예 없으면 "완전히 새 프로젝트에 처음 설치"로
+# 취급한다 — 예전에는 여기서 무조건 거부하고 README.md §설치(수동 cp)로
+# 떠넘겼지만, 그 경로는 실행 검증 이력이 없었고 배포(다른 레포로 확산)
+# 직전 첫 채택자가 반드시 거치는 경로다. $DST 자신은 여전히 실존을 요구한다
+# (오타로 존재하지 않는 경로에 mkdir -p로 새 트리를 만들어버리면 "잘못된
+# 경로에 설치"를 감지할 방법이 없어진다 — 그건 신규 설치 지원이 아니라
+# 안전장치 제거다). 아래 §1~§3은 이미 $DST/.claude/skills, .../agents가
+# 없는 경우를 mkdir -p로 다루므로(백업 스킵 로그 + $NEW 생성이 상위
+# 디렉터리까지 만듦) 이 지점 이후 추가 분기가 필요 없다.
+[ -d "$DST" ] || {
+  err "DST 미설정/오경로: $DST (디렉터리 자체가 없다). 대상 프로젝트 디렉터리를 먼저 만든 뒤 다시 실행하라."
   exit 1
 }
+if [ ! -d "$DST/.claude" ]; then
+  log "정보: $DST/.claude 없음 — 신규 설치로 진행한다(빈 프로젝트에 새로 설치)"
+  # 여기서 mkdir하지 않는다 — --dry-run은 "아무것도 쓰지 않는다"는 계약이라,
+  # 계획 출력 단계(§0 나머지)에서 디렉터리를 실제로 만들면 그 계약이 깨진다.
+  # 아래 §1~§3은 존재하지 않는 디렉터리를 이미 안전하게 다룬다: 백업은
+  # `[ -d ]` 가드로 스킵되고, $NEW 생성의 `mkdir -p "$NEW"`와 tier 에이전트
+  # 단계의 `mkdir -p "$DST/.claude/agents"`가 필요한 상위 디렉터리를 실제
+  # 실행(비-dry-run) 시점에 만든다.
+fi
 
 # C-1: --src와 --dst가 같은 경로면, 아래 §2/§3의 copy-to-temp-then-swap이
 # 정본 스킬 디렉터리 자신을 대상으로 백업→스왑을 수행하게 된다 — 이 경우
@@ -355,6 +497,13 @@ if [ -f "$GLOBAL_ROOT/.claude/settings.json" ] || [ -f "$DST/.claude/settings.js
   else
     log "정보: enforce-subagent-model 훅 등록을 settings.json에서 찾지 못했다 — §4-2 스모크 해석 시 참고할 것"
   fi
+else
+  # F-3: settings.json이 전역/프로젝트 어디에도 없는 완전 신규 머신에서는
+  # 위 두 분기 모두 스킵되어 훅 등록에 대한 언급이 한 줄도 나오지 않는다
+  # — "재설치 완료" 로그와 함께 강제(PreToolUse 차단)가 발효되지 않은
+  # 반쪽 설치가 조용히 끝난다. README.md §설치와 동일한 사실을 여기서도
+  # 명시적으로 경고한다.
+  log "경고: settings.json을 전역($GLOBAL_ROOT/.claude/settings.json)/프로젝트($DST/.claude/settings.json) 어디서도 찾지 못했다 — 이 스크립트는 skills + tier 에이전트만 설치하며 훅 파일도 settings.json 등록도 하지 않는다. README.md §설치의 '훅을 별도로 등록한다' 단계를 수행하지 않으면 강제(PreToolUse 차단)가 발효되지 않은 반쪽 설치로 남는다."
 fi
 if [ -d "$DST/.claude/agents" ]; then
   for agent in "${TIER_AGENTS[@]}"; do
@@ -388,6 +537,21 @@ if [ -L "$DST_SKILL_DIR" ]; then
   err "링크를 해제(rm)하고 실제 디렉터리로 옮긴 뒤 다시 실행하라."
   exit 1
 fi
+
+# P3-GUARD-START
+# P3: 대상 경로가 존재하는데 디렉터리도 심볼릭 링크(위 C6)도 아닌 일반
+# 파일(또는 다른 타입)이면, §1 백업 단계의 `[ -d ]` 검사가 이를 "기존
+# 스킬 디렉터리 없음"으로 오판해 백업 없이 스왑을 진행한다 — 그런데
+# §2/§3의 스왑은 `[ -e ]` 기준으로 mv하므로 이 파일을 여전히 .old로
+# 옮겼다가 스왑 성공 후 무경고로 영구 삭제한다(실측: 백업 없음, rc=0,
+# 허위 "재설치 완료" 로그까지 남는다). 파괴적 단계 전에 거부한다.
+if [ -e "$DST_SKILL_DIR" ] && [ ! -d "$DST_SKILL_DIR" ]; then
+  err "거부(P3): $DST_SKILL_DIR 가 디렉터리가 아닌 일반 파일(또는 다른 타입)이다."
+  err "이 상태로 진행하면 백업 없이 스왑이 진행돼 이 파일이 영구 소실된다."
+  err "해당 경로를 확인하고 처리(이동/삭제)한 뒤 다시 실행하라."
+  exit 1
+fi
+# P3-GUARD-END
 
 log "=== 재설치 계획 ==="
 log "SRC: $SRC"
@@ -461,6 +625,22 @@ BACKUP_FILE_COUNT="$(find "$BAK" -type f | wc -l | tr -d ' ')"
 if [ -d "$DST_SKILL_DIR" ] && [ "$BACKUP_FILE_COUNT" -eq 0 ]; then
   err "백업이 비어 있다($BAK) — 기존 스킬 디렉터리가 있었는데 백업 내용이 0건. 중단한다."
   exit 1
+fi
+# NEW_INSTALL: 마커는 emptiness 검사(위) 다음에 쓴다 — 검사보다 먼저 쓰면
+# 마커 파일 자체가 $BACKUP_FILE_COUNT에 잡혀 "백업이 비어 있다" 가드가
+# 절대 0이 되지 않아 무력화된다.
+# F-1: 마커는 그 축(스킬/에이전트)이 실제로 부재했을 때만 쓴다. 기존에는
+# 무조건 썼기 때문에, 정상 백업이 만들어진 뒤(예: 사용자가 백업 디렉터리
+# 내용을 실수로 rm -rf함) 내용만 사라져도 마커는 살아남아 "내용 없음 +
+# 마커 있음"이 되고, do_rollback이 이를 진짜 신규 설치로 오인해 live
+# 트리를 삭제했다(실측 재현, 아래 test-reinstall.sh 회귀 케이스 참고).
+# 백업 대상이 실제로 없었을 때만 쓰면 "내용 없음 + 마커 있음" = 진짜 신규
+# 설치만 남고, 내용이 소실된 백업은 마커 없이 do_rollback에서 다시 거부된다.
+if [ ! -d "$DST_SKILL_DIR" ]; then
+  : > "$BAK/$FRESH_INSTALL_MARKER"
+fi
+if [ ! -d "$DST/.claude/agents" ]; then
+  : > "$BAK/$AGENTS_FRESH_INSTALL_MARKER"
 fi
 log "백업 완료: $BAK ($BACKUP_FILE_COUNT 파일)"
 

@@ -52,3 +52,10 @@
 | 2026-08-19 | judge-max | PR#10 릴리스 게이트(커밋 게이트 발동조건 변경 적대 판정) | (파라미터 생략) | max(frontmatter) | Agent(tier) | FIX-THEN-MERGE (분류 5건 옳음, README 산식 1건) |
 | 2026-08-19 | executor-med | PR#10 게이트 finding 마무리(README 산식·level 검증·커버리지 3건) | sonnet | medium(frontmatter) | Agent(tier) | pass (test-lint 36/36) |
 | 2026-08-19 | executor-med | 위임 로그 마감 + 이번 라운드 기록 | sonnet | medium(frontmatter) | Agent(tier) | pass |
+| 2026-08-21 | executor-high | 신규 채택자 경로 E2E 검증(빈 프로젝트 첫 설치) | sonnet | high(frontmatter) | Agent(tier) | pass (신규 설치가 하드 거부되던 것 발견·수정) |
+| 2026-08-21 | executor-med | gotchas 2건 + BACKLOG B-04 자족화 | sonnet | medium(frontmatter) | Agent(tier) | pass |
+| 2026-08-21 | judge-max | 배포 준비 감사(확산 적합성 적대 판정) | (파라미터 생략) | max(frontmatter) | Agent(tier) | FIX-THEN-GO (F-1 파괴적 회귀 발견) |
+| 2026-08-21 | executor-high | F-1~F-3·F-7·F-8 봉합(마커 조건부화) | sonnet | high(frontmatter) | Agent(tier) | pass (test-reinstall 25/25) |
+| 2026-08-21 | judge-max | fable5 최종 적대검증(공격 시나리오 17종) | (파라미터 생략) | max(frontmatter) | Agent(tier) | FIX-THEN-GO (P1·P2 축 비대칭 발견) |
+| 2026-08-21 | executor-high | P1·P2·P3 봉합(축 대칭·롤백 dst 가드·일반파일 거부) | sonnet | high(frontmatter) | Agent(tier) | pass (test-reinstall 31/31, 비공허성 내장) |
+| 2026-08-21 | executor-med | pre-commit 주석 실측 갱신 + 로그 기록 | sonnet | medium(frontmatter) | Agent(tier) | (리뷰 대기) |
