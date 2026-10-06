@@ -8,6 +8,17 @@
  *   호출은 목적에 맞는 model을 **명시**해야 한다 (세션 상속 금지).
  *
  * 동작:
+ *   - subagent_type 이 "fork" 면 아래 모든 분기보다 **먼저** 평가한다.
+ *     fork는 세션(메인) 모델을 상속하고 model 파라미터를 무시한다 —
+ *     {subagent_type:"fork", model:"opus"}가 아래 "model 있음" 분기를 통과해
+ *     실제로는 세션 모델(예: Fable)로 도는 사각지대가 있었다. 그래서 fork는
+ *     prompt에 독립된 한 줄 `FORK_REASON: conversation-context` 가 있을 때만
+ *     통과하고, 없으면 model 유무와 무관하게 exit 2 로 차단한다. 어떤 ALLOW_*
+ *     break-glass도 이 분기를 우회하지 못한다. exit 0의 stderr는 debug log에만
+ *     남고 Claude는 보지 못한다(https://code.claude.com/docs/en/hooks) —
+ *     실제 가시화는 위임 로그의 effective model 기록이 맡는다. 한계: 토큰은
+ *     자기 선언이라 강제가 아니라 의식적 선언 장치다(호출자가 거짓으로 적어도
+ *     훅은 알 수 없다).
  *   - tool_input.model 이 있고, subagent_type 이 tier 5종(아래
  *     TIER_EXPECTED_MODEL) 중 하나면 그 값이 tier의 고정값과 **일치할 때만**
  *     통과시킨다 — 불일치는 exit 2 로 차단한다(B-11: 조용한 강등/승급 봉인.
@@ -117,6 +128,10 @@ const TIER_EXPECTED_MODEL = {
   "judge-max": "fable",
 };
 
+// fork 호출의 유일한 허용 사유 — prompt 안에서 독립된 한 줄(줄 앞뒤 공백/탭만
+// 허용)이어야 한다. 줄 중간 언급·다른 사유 값은 매치하지 않는다.
+const FORK_REASON_RE = /^[ \t]*FORK_REASON:[ \t]*conversation-context[ \t]*$/m;
+
 let raw = "";
 process.stdin.on("data", (chunk) => (raw += chunk));
 process.stdin.on("end", () => {
@@ -130,6 +145,37 @@ process.stdin.on("end", () => {
   const model = toolInput.model;
   const subagentType = toolInput.subagent_type || "";
   const hasModel = typeof model === "string" && model.trim();
+
+  // fork 전용 분기 — hasModel 분기보다 앞. 어떤 ALLOW_* break-glass도
+  // 이 분기를 우회하지 않는다(여기서는 env를 평가하지 않는다).
+  if (subagentType === "fork") {
+    const prompt = toolInput.prompt;
+    if (typeof prompt === "string" && FORK_REASON_RE.test(prompt)) {
+      const passed = hasModel
+        ? ` 넘긴 model('${model.trim()}')은 적용되지 않습니다.`
+        : "";
+      process.stderr.write(
+        [
+          "[subagent-model-routing] fork 통과 (FORK_REASON: conversation-context 확인).",
+          "  effective model = 세션(메인) 모델 — fork는 model 파라미터를 무시하고 세션 모델을 그대로 상속합니다." +
+            passed,
+        ].join("\n")
+      );
+      process.exit(0);
+    }
+    process.stderr.write(
+      [
+        "[subagent-model-routing] fork 호출 차단 — 사유 토큰(FORK_REASON)이 없습니다.",
+        "  fork는 세션(메인) 모델을 상속하고 model 파라미터를 무시합니다(예: model 'opus'를 넘겨도 세션 모델로 실행).",
+        "  fork는 대화 맥락 자체가 입력일 때만 쓰세요. 컨텍스트 크기 우회·모델 상향 수단으로는 금지입니다.",
+        "  대형 파일 레인: executor-high + 파일·함수 단위 분할 + 부분 Read/줄 예산으로 처리하세요.",
+        "  같은 레인이 2회 실패하면 model 'opus'로 상향하세요.",
+        "  정말 대화 맥락이 입력이라면 prompt에 한 줄로 `FORK_REASON: conversation-context` 를 넣어 다시 호출하세요.",
+        "  이 차단은 ALLOW_INHERITED_SUBAGENT_MODEL / ALLOW_TIER_MODEL_OVERRIDE 로도 우회되지 않습니다.",
+      ].join("\n")
+    );
+    process.exit(2);
+  }
 
   if (hasModel) {
     const isTier = Object.prototype.hasOwnProperty.call(

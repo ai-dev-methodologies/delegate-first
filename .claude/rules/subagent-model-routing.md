@@ -17,6 +17,7 @@
      `tools`·`disallowedTools`는 유지되고, `effort`는 일반 스폰에서만
      유지되며 named 스폰에서는 유지되지 않는다. 증거 상세는
      `references/routing-matrix.md` §① 참조.
+   - **fork 예외**: `subagent_type: fork`는 세션 모델과 대화 맥락 전체를 상속하고 `model`을 무시한다. 대화 맥락 자체가 입력일 때만 prompt에 한 줄 `FORK_REASON: conversation-context`를 넣어 쓴다 — 훅은 토큰이 없으면 model 유무와 무관하게 exit 2로 차단하고 어떤 break-glass로도 우회되지 않는다. 컨텍스트 크기 우회·모델 상향 목적 금지(`references/routing-matrix.md` §fork와 컨텍스트 크기). 2026-10-06 사용자 요청으로 도입.
 3. 라우팅 기준 (글로벌 CLAUDE.md OMO 정책과 동일):
    - 탐색·파일검색·단순집계·기계적 편집 → `haiku`/`sonnet`
    - 일반 구현·보통 디버깅·리뷰 1차·문서 구조화 → `sonnet`
@@ -33,7 +34,8 @@
   계열 7종 + `statusline-setup`이 있다. 목록이 `.claude/agents/`와 갈라지지
   않게 **정본 레포 사본에 한해** `scripts/lint-delegate-first.py`가 대조
   검사한다 — 전파된 전역 훅 사본과 각 설치 프로젝트 `agents/` 사이의
-  드리프트를 잡는 자동 검사는 없다).
+  드리프트를 잡는 자동 검사는 없다). `subagent_type: fork`는 별도 분기로,
+  prompt의 `FORK_REASON: conversation-context` 줄 유무만 본다.
 - break-glass는 사람 전용 2종: `ALLOW_INHERITED_SUBAGENT_MODEL=1`(model 미지정
   차단을 우회) / `ALLOW_TIER_MODEL_OVERRIDE=1`(tier 값 불일치 차단을 우회, B-11).
   Claude는 이 변수들을 스스로 설정하지 않는다.

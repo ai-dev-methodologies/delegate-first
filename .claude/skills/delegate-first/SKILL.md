@@ -32,18 +32,23 @@ Copy this into your response and check off as you go:
 
 ```
 Delegation Progress:
+- [ ] 0. On invocation: check the actual model of delegations already in flight
 - [ ] 1. Decompose the task and classify its type
 - [ ] 2. Pick model + effort + execution path (routing-matrix.md) — if effort matters, prefer a tier agent or Workflow/codex path
-- [ ] 3. Delegate with a scoped prompt (prompt-templates.md) — and log it: agent/role/model/effort/path appended to the project delegation log (path is a per-project parameter — default docs/handoff/delegation-log.md, see the installing project's README); effort not specifiable on ad-hoc Agent calls → record "(default)"
+- [ ] 3. Delegate with a scoped prompt (prompt-templates.md) — and log it: agent/role/model/effort/path appended to the project delegation log (path is a per-project parameter — default docs/handoff/delegation-log.md, named in the installing project's CLAUDE.md); effort not specifiable on ad-hoc Agent calls → record "(default)"; record the effective model (see Step 3)
 - [ ] 4. Review: don't trust self-report — reproduce key claims (grep/run)
 - [ ] 5. Judge: pass / re-delegate (strengthen prompt) / escalate
 ```
 
+**Step 0 — Audit in-flight delegations.** When this skill is invoked, delegations may already be running (especially forks and calls with no `model`). Check their actual model in the subagent transcript's `model` field (the main session can read this itself). Two other sources exist but are not visible to the main session: `/tasks` names the model on each subagent's row (user-run CLI command, Claude Code v2.1.242+ — ask the user), and `resolvedModel` appears only in the PostToolUse hook input's `tool_response` (sources: https://code.claude.com/docs/en/sub-agents , https://code.claude.com/docs/en/hooks). If one disagrees with the routing, let it finish its current unit and re-route the remaining work — do not kill it mid-run and lose its output.
+
 **Step 1 — Decompose & classify.** Split the task into units of one type each: exploration/extraction, doc editing/structuring, general implementation, first-pass review, adversarial verification/judgment, or architecture/legal/money/authorization.
 
-**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing a value now requires an exact match to that tier's pinned model or the hook blocks it with exit 2 — no more silent downgrade, per B-11) — this preference only holds when every registered hook's pinned list includes that tier, and a named spawn (passing `name`) does not preserve `effort` even so; see routing-matrix.md.
+**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing a value now requires an exact match to that tier's pinned model or the hook blocks it with exit 2 — no more silent downgrade, per B-11) — this preference only holds when every registered hook's pinned list includes that tier, and a named spawn (passing `name`) does not preserve `effort` even so; see routing-matrix.md. `subagent_type: fork` runs on the session model and ignores `model`; use it only when the conversation itself is the input, add the line `FORK_REASON: conversation-context`, and never use it to get a bigger window or a stronger model (routing-matrix.md).
 
-**Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the two standard templates (read-only investigation, implementation/edit). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, the expected output format, and — for verdict/review delegations — a timebox.
+**Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the three standard templates (read-only investigation, implementation/edit, large-file implementation). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, the expected output format, and — for verdict/review delegations — a timebox.
+
+Log the effective model, not just the requested one: when the requested alias and the model that actually runs differ (e.g. a fork runs on the session model), write `<requested> → <effective>` in the model column (tier calls with `model` omitted keep the existing convention: actual model in the result column) and use path `Agent(fork)` for forks. Keep the 7-column schema — lint Check B enforces 7 columns, so do not add a column. Log path fallback: the path named in the project CLAUDE.md if any; otherwise, if `docs/handoff/` does not exist either, `.omc/logs/delegation-log.md` (git-ignored via `.omc/` in this repo's .gitignore — verify in the installing project); lint it with `python3 scripts/lint-delegate-first.py --log-path <that path>`.
 
 **Step 4 — Review.** A subagent's self-report is not evidence on its own. Reproduce its central claim yourself — grep the file it says it edited, run the test it says passes, read the diff it says exists.
 
@@ -77,7 +82,7 @@ Delegating a judgment call means setting a timebox — "act if nothing arrives b
 
 ## Mandatory top-tier-model (fable) triggers
 
-The main session's own model is a user setting (session config) — it may be `fable`, `opus`, or anything else. This skill does not assume which. Regardless of the main session's model, these 5 judgment types must go through the top-tier model (`fable`): if the main session already is `fable`, it performs them directly; otherwise, it delegates to a `fable` subagent.
+The main session's own model is a user setting (session config) — it may be `fable`, `opus`, or anything else. This skill does not assume which. Regardless of the main session's model, these 5 judgment types must go through the top-tier model (`fable`): if the main session already is `fable`, it performs them directly; otherwise, it delegates to a `fable` subagent. When the main session is `fable`, first-pass evidence gathering (reading a large diff, collecting findings) may go to `reviewer-high` (opus), but only the final verdict is issued by `fable`. When the main session is not `fable`, the final verdict goes to `judge-max`.
 
 1. ADR-level decisions
 2. Shipping/release gates

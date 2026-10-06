@@ -14,9 +14,9 @@
 ## 구성 요소
 
 ```
-SKILL.md (원칙 + 5단계 체크리스트)
+SKILL.md (원칙 + 0~5단계 체크리스트)
   ├─ references/routing-matrix.md   (작업유형 → model → effort → 실행경로 → tier에이전트)
-  ├─ references/prompt-templates.md (조사용 / 구현용 프롬프트 템플릿 2종)
+  ├─ references/prompt-templates.md (조사용 / 구현용 / 대형 파일 구현용 프롬프트 템플릿 3종)
   └─ tier 에이전트 5종 (.claude/agents/*.md)
         explorer-low(haiku/low, 읽기전용) · executor-med(sonnet/medium)
         · executor-high(sonnet/high) · reviewer-high(opus/high, Write/Edit 제외)
@@ -29,7 +29,10 @@ SKILL.md (원칙 + 5단계 체크리스트)
                일치해야 통과 — 별칭 exact match, 대소문자·전체 모델 ID
                불가, 불일치는 exit 2. 생략이 권장. break-glass 2종:
                ALLOW_INHERITED_SUBAGENT_MODEL=1(model 미지정 차단 우회) /
-               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회), B-11)
+               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회), B-11;
+               subagent_type: fork는 prompt에 한 줄
+               `FORK_REASON: conversation-context`가 없으면 exit 2 —
+               fork는 세션 모델로 돌고 model을 무시하므로, break-glass로도 우회 불가)
               ↑ 정책 근거
         글로벌 규칙: subagent-model-routing.md
 ```

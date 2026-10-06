@@ -329,6 +329,20 @@ open(p, 'w', encoding='utf-8').write(content)
 "
 run_and_check "P-1 회귀2: 2차 표 헤더 오타+잘못된 실행경로 행 (FAIL 기대)" 1
 
+# 18b. fork 실행경로: 위임 로그에 'Agent(fork)' 행을 적을 수 있어야 한다
+# (fork 전용 훅 분기 도입에 따른 허용 집합 확장). 정상 형식의 fork 행은
+# FAIL 없이 통과(exit 0)해야 한다.
+new_case
+python3 -c "
+p = '$CASE_DIR/log.md'
+content = '''| 날짜 | agent | role | model | effort | 실행경로 | 결과 |
+|---|---|---|---|---|---|---|
+| 2026-10-06 | fork | 대화 맥락 이어받기 | opus → fable(fork) | (default) | Agent(fork) | pass |
+'''
+open(p, 'w', encoding='utf-8').write(content)
+"
+run_and_check "fork 회귀: Agent(fork) 실행경로 행이 FAIL 없이 통과 (exit 0 기대)" 0
+
 # 19. B-09: MODEL_PINNED_TYPES Set 항목에 문자열 연결(+) 사용 — model/map은
 # 건드리지 않는다(순수 파싱 신호만 격리해서 확인). 구버전 린터는 이 항목을
 # STRING_LITERAL_RE.finditer로 "executor-"와 "high" 두 개의 별개 유효 항목

@@ -3,6 +3,7 @@
 ## Contents
 - Template 1: Read-only investigation
 - Template 2: Implementation / edit
+- Template 3: 대형 파일 구현용
 - Worked examples (generic — replace with your own project's cases)
 
 ## Template 1 — 조사용 (read-only)
@@ -92,3 +93,28 @@
 
 출력 형식: REPORT.md + PR (git 커밋·push·PR 주체는 프로젝트 규약에 따름 — 위임 프롬프트에 명시)
 ```
+
+## Template 3 — 대형 파일 구현용
+
+```
+역할: <한 줄 — 예: "<파일>의 <함수A>~<함수B> 구간을 수정하는 구현 에이전트">
+
+작업 디렉터리: <절대경로, worktree 경로 명시>
+대상: 파일 1개 + 함수·심볼 범위 (예: `<파일>`의 `<함수A>`~`<함수B>`) — 그 밖은 수정 금지
+
+읽기 규칙: 전체 Read 금지. 먼저 `grep -n '<심볼>' <파일>`로 위치를 확인한 뒤 `Read(offset=<줄>, limit=<≤200>)` 또는 `sed -n '<A>,<B>p' <파일>`로 부분 Read.
+줄 예산: 읽기 누계 ≤ <N>줄, 변경 ≤ <M>줄 — 초과가 필요하면 중단하고 보고(범위 재분할 요청).
+이어받기 S0: 시작 전 `git diff --stat`와 언어별 최소 구문 검사(예: `python3 -m py_compile <파일>`)로 앞 레인이 남긴 상태부터 확인.
+
+경계: <수정 가능 범위 / 수정 금지 범위>
+시스템 설정 명령 금지: 진단·수리 목적이라도 시스템 명령 실행 금지 — 환경 오류 시 중단·보고만.
+
+완료 기준 (응답에 증거 원문):
+- [ ] 테스트 출력 원문
+- [ ] 변경 줄 수 (`git diff --stat`)
+- [ ] 한계·모르는 것 명시 (아는 척 금지)
+
+출력 형식: <파일 경로 + 커밋 여부 + 보고 형식>
+```
+
+같은 원인으로 2회 실패하면 [routing-matrix.md](routing-matrix.md)의 opus 상향을 따른다 — fork로 우회하지 않는다.

@@ -73,7 +73,7 @@ DEFAULT_LOG_PATH = REPO_ROOT / "docs" / "handoff" / "delegation-log.md"
 ALLOWED_LEVELS = ("FAIL", "WARN", "INFO")
 
 LOG_HEADER = ["날짜", "agent", "role", "model", "effort", "실행경로", "결과"]
-ALLOWED_EXEC_PATHS = {"Agent(tier)", "Agent(ad-hoc)", "Workflow agent()", "codex exec"}
+ALLOWED_EXEC_PATHS = {"Agent(tier)", "Agent(ad-hoc)", "Agent(fork)", "Workflow agent()", "codex exec"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
 PENDING_MARKER = "(리뷰 대기)"
