@@ -21,10 +21,12 @@
 3. 라우팅 기준 (글로벌 CLAUDE.md OMO 정책과 동일):
    - 탐색·파일검색·단순집계·기계적 편집 → `haiku`/`sonnet`
    - 일반 구현·보통 디버깅·리뷰 1차·문서 구조화 → `sonnet`
-   - 적대판정·batch-audit·돈·권한·동시성·release-gate·보안 → `opus`
+   - 적대판정·batch-audit·돈·권한·동시성·보안 → `opus`
+   - release-gate 최종 판정 → `fable`(1차 증거 수집은 opus 가능, 2026-10-07 사용자 확정)
+   - delegate-first 스킬 호출 중에는 SKILL.md의 fable 강제 트리거 5종(적대 검증·돈·권한·보안 등)이 위 opus 기준보다 우선한다(2026-10-07 사용자 확정).
    - 라벨링·생성 "품질" 작업은 다운시프트 금지 (2026-07-15 확정 유지)
 4. 판정·종합·보고는 메인이 한다. 서브에이전트 결과를 메인이 재검하지 않고
-   그대로 신뢰하지 말 것(독립 검증 게이트는 별도 opus 에이전트).
+   그대로 신뢰하지 말 것(독립 검증 게이트는 별도 opus 에이전트 — release-gate 최종 판정은 fable).
 
 ## 강제 장치
 - PreToolUse 훅 `~/.claude/hooks/enforce-subagent-model.cjs` (matcher: Agent)가
