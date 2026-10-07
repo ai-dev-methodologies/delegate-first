@@ -5,12 +5,12 @@
 스키마: `날짜 | agent | role(한 줄) | model | effort | 실행경로 | 결과`
 
 - `effort`: Agent 툴 즉석 호출은 effort 지정이 불가하므로 `(default)`로 적는다. tier 에이전트/Workflow `agent()`/`codex exec` 경로는 실제 값을 적는다.
-- `실행경로`: `Agent(tier)` / `Agent(ad-hoc)` / `Workflow agent()` / `codex exec`
+- `실행경로`: `Agent(tier)` / `Agent(ad-hoc)` / `Agent(fork)` / `Workflow agent()` / `codex exec`
 - `결과`: 일반 위임은 `pass` / `re-delegate` / `escalate` — 리뷰(4단계) 후에 채운다. 리뷰/게이트 위임(reviewer-high, judge-max 등)은 판정 요약을 자유 텍스트로 덧붙일 수 있다 — 예 `FIX-THEN-MERGE (Cancer 0, Polyp 6, Cigarette 10)`. 이 자유 텍스트 관례는 2026-08-18부터 실제로 쓰여 왔고(PR #1~#4), 개수(Cancer/Polyp/Cigarette, NF 등)는 감사 시점에 되짚어볼 근거로 유용해 문서를 실태에 맞춰 갱신했다 — 린터(`scripts/lint-delegate-first.py` Check B)는 `결과` 컬럼을 비어 있지 않은지와 `(리뷰 대기)` 누적 건수만 검사하며, 값 자체를 `pass`/`re-delegate`/`escalate`로 제한하지 않는다(자유 텍스트 관례와 일부러 맞춘 설계).
 
 이 경로는 프로젝트 파라미터다 — 다른 경로를 쓰는 프로젝트는 `CLAUDE.md`에 명시한다(README 참고).
 
-`model` 컬럼 관례: `(미지정)`은 훅 차단을 의도적으로 유발한 프로브(예: 훅 검증용 무model 호출)를, `(파라미터 생략)`은 `model` 파라미터를 넘기지 않고 tier 에이전트의 frontmatter 값을 그대로 적용받은 정상 호출을 뜻한다. `(파라미터 생략)`인 행은 이 컬럼만으로는 실제 적용 모델을 알 수 없다 — 실제 적용 모델은 `결과` 컬럼에 기록한다(예: "실제 haiku-4-5 적용 확인").
+`model` 컬럼 관례: `(미지정)`은 훅 차단을 의도적으로 유발한 프로브(예: 훅 검증용 무model 호출)를, `(파라미터 생략)`은 `model` 파라미터를 넘기지 않고 tier 에이전트의 frontmatter 값을 그대로 적용받은 정상 호출을 뜻한다. `(파라미터 생략)`인 행은 이 컬럼만으로는 실제 적용 모델을 알 수 없다 — 실제 적용 모델은 `결과` 컬럼에 기록한다(예: "실제 haiku-4-5 적용 확인"). 요청과 실제가 다르면 `<요청> → <effective>`로 적는다(예: `opus → fable(fork)`).
 
 | 날짜 | agent | role | model | effort | 실행경로 | 결과 |
 |---|---|---|---|---|---|---|
@@ -59,3 +59,9 @@
 | 2026-08-21 | judge-max | fable5 최종 적대검증(공격 시나리오 17종) | (파라미터 생략) | max(frontmatter) | Agent(tier) | FIX-THEN-GO (P1·P2 축 비대칭 발견) |
 | 2026-08-21 | executor-high | P1·P2·P3 봉합(축 대칭·롤백 dst 가드·일반파일 거부) | sonnet | high(frontmatter) | Agent(tier) | pass (test-reinstall 31/31, 비공허성 내장) |
 | 2026-08-21 | executor-med | pre-commit 주석 실측 갱신 + 로그 기록 | sonnet | medium(frontmatter) | Agent(tier) | (리뷰 대기) |
+| 2026-10-06 | claude-code-guide | fork·model·[1m]·창 크기·훅 stderr 공식문서 확인 | sonnet | medium(실측) | Agent(ad-hoc) | pass (메인 curl 원문 재대조, 실제 claude-sonnet-5-5) |
+| 2026-10-06 | executor-high | 훅 fork 게이트 TDD 구현 + smoke·lint Agent(fork) | (파라미터 생략) | high(frontmatter) | Agent(tier) | pass (실제 claude-sonnet-5-5) |
+| 2026-10-06 | executor-med | SKILL·routing-matrix·prompt-templates·로그 설명 편집(A·C·D) | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (실제 claude-sonnet-5-5) |
+| 2026-10-06 | reviewer-high | fork-guard r1 적대 리뷰 | (파라미터 생략) | high(frontmatter) | Agent(tier) | ITERATE (P1 1, P2 9; 실제 claude-opus-5-5) |
+| 2026-10-06 | executor-med | r1 지적 F-01~F-10 반영 | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (실제 claude-sonnet-5-5) |
+| 2026-10-06 | reviewer-high | fork-guard r2 해소 확인 | (파라미터 생략) | high(frontmatter) | Agent(tier) | APPROVE (P0 0, P1 0, 신규 P2 2; 실제 claude-opus-5-5) |

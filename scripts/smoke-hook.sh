@@ -130,6 +130,39 @@ run_case "C10: judge-max + model claude-fable-5(전체 ID, 불일치 → 차단)
 run_case "C10: judge-max + model \" fable\"(앞 공백, trim 후 일치 → 통과)" \
   '{"tool_input":{"subagent_type":"judge-max","model":" fable"}}' 0
 
+# --- fork 전용 분기: fork는 세션(메인) 모델을 상속하고 model 파라미터를
+# 무시한다 — 사유 토큰(prompt의 독립된 한 줄 `FORK_REASON: conversation-context`)이
+# 없으면 model 유무와 무관하게 차단. 어떤 ALLOW_* break-glass도 이 게이트를
+# 우회하지 못한다. 토큰은 자기 선언이라 강제가 아니라 의식적 선언 장치다. ---
+run_case "fork, 사유 토큰 없음, model 없음 → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"대형 파일 분석해줘"}}' 2
+run_case "fork, 사유 토큰 없음, model opus → 차단(model이 있어도 새던 구멍)" \
+  '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"대형 파일 분석해줘"}}' 2
+run_case "fork, 사유 토큰 있음, model 없음 → 통과" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"FORK_REASON: conversation-context\n이어서 정리해줘"}}' 0
+run_case "fork, 사유 토큰 있음 + model opus → 통과" \
+  '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"FORK_REASON: conversation-context\n이어서 정리해줘"}}' 0
+run_case "fork, 허용 안 된 사유 FORK_REASON: large-file → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"FORK_REASON: large-file\n분석"}}' 2
+run_case "fork, 토큰이 줄 중간(\"참고 FORK_REASON: ...\") → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"참고 FORK_REASON: conversation-context"}}' 2
+run_case "fork, 토큰 줄 끝 CRLF → 통과" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"FORK_REASON: conversation-context\r\n작업"}}' 0
+run_case "fork, 토큰 뒤 추가 텍스트 → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"FORK_REASON: conversation-context please"}}' 2
+run_case "fork, 전각 콜론 → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"FORK_REASON： conversation-context"}}' 2
+run_case "fork, prompt 숫자 → 차단" '{"tool_input":{"subagent_type":"fork","prompt":123}}' 2
+run_case "fork, prompt 배열 → 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":["FORK_REASON: conversation-context"]}}' 2
+run_case "fork, prompt 없음 → 차단" '{"tool_input":{"subagent_type":"fork"}}' 2
+run_case "fork, 사유 없음 + ALLOW_INHERITED_SUBAGENT_MODEL=1 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"fork","prompt":"분석"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+run_case "fork, 사유 없음 + ALLOW_TIER_MODEL_OVERRIDE=1 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"분석"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+
 # --- 파싱 불가/빈 stdin: 설계된 fail-open ---
 run_case "비JSON stdin" 'not json {' 0
 run_case "빈 stdin" '' 0
@@ -138,6 +171,18 @@ run_case "빈 stdin" '' 0
 run_case "ALLOW_INHERITED_SUBAGENT_MODEL=1 + general-purpose model 없음" \
   '{"tool_input":{"subagent_type":"general-purpose"}}' 0 \
   "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+
+# --- fork 통과 케이스의 stderr 안내 검사 (run_case는 exit code만 보므로 별도 캡처) ---
+# debug log 전용 출력의 문구 회귀 검사 — exit 0의 stderr는 Claude에게 보이지 않으므로
+# 가시화 수단이 아니라 안내 문구가 유지되는지만 본다.
+fork_stderr=$(printf '%s' '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"FORK_REASON: conversation-context"}}' | node "$HOOK_PATH" 2>&1 >/dev/null)
+if printf '%s' "$fork_stderr" | grep -q "effective model"; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - fork 통과 케이스 stderr에 'effective model' 안내 없음 (실제 stderr: ${fork_stderr:-<비어있음>})"
+fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if [ "$FAIL_COUNT" -eq 0 ]; then
