@@ -47,7 +47,7 @@
 | Y-15 | 첫 루프 실패 10패턴과 신뢰 요소 8개 | RY `CLAUDE-LOOP-ENGINEERING-REFERENCE-2026-09.md` §7 | skip | 개별 행으로 흡수했다. 상태 파일은 Y-01, 검증 기준은 Y-03, 정지 조건은 Y-04, 좁은 쓰기 권한은 Y-07이다. 감사 기록은 위임 로그가, 사람 검토 경로는 세 번째 실패 시 사용자 보고(`SKILL.md:70`)가 맡는다 | 해당 없음 |
 | Y-16 | 계층화된 정지 규칙(벽시계·토큰·무진전 탐지) | RY `REPORT.md` §2 Q4 | defer | 벽시계와 토큰 한도를 에이전트 밖에서 강제할 수단이 없다. 훅은 Agent 호출 시점만 본다. 필요한 실측은 서브에이전트의 실행 시간과 토큰을 전사에서 집계할 수 있는지다 | 전사 `.jsonl`에서 한 작업의 시간과 토큰을 합산하는 시험 |
 | Y-17 | 자료 B: 후보 모델 평가 방법 | HY §0 자료 B | defer | 이번 범위가 아니다. 후보 모델 실험에는 유료 호출이 필요해 지시서가 금지한다(HY §3). 필요한 실측은 같은 작업과 수용 기준으로 tier 모델을 비교하는 설계다 | 실험 설계 문서를 먼저 쓴다. 호출은 사용자 승인 뒤 한다 |
-| Y-18 | 훅 차단의 end-to-end 실효 | RY `REPORT.md` §5 경고 1·9 | defer | 공식 사양상 차단되는 동작이 현장에서 무시된다는 보고가 있고 패치 여부를 확인하지 못했다. 이 레포의 강제 장치는 PreToolUse 훅에 의존한다. Stop 훅의 연속 차단 상한은 Stop 훅 한정이라 직접 걸리지 않는다 | BACKLOG B-08의 4단계 실측(음성 대조 → 양성 → 전사 값 대조 → 사후 음성)을 B-19 전파에도 적용한다 |
+| Y-18 | 훅 차단의 end-to-end 실효 | RY `REPORT.md` §5 경고 1·9 | defer | 공식 사양상 차단되는 동작이 현장에서 무시된다는 보고가 있고 패치 여부를 확인하지 못했다. 이 레포의 강제 장치는 PreToolUse 훅에 의존한다. Stop 훅의 연속 차단 상한은 Stop 훅 한정이라 직접 걸리지 않는다 | BACKLOG B-08의 4단계 실측(음성 대조 → 양성 → 전사 값 대조 → 사후 음성)을 훅 전파에도 적용한다 |
 
 ## 4. 다른 자료와 결합한 지점
 
@@ -56,23 +56,23 @@ Ilyas 자료와 사용자 결정 D1~D7을 이 자료에 섞은 곳이다.
 | # | 결합 요소 | Youssef 쪽 | 결합한 자료 | 결합 방식 | 충돌·이탈 |
 |---|---|---|---|---|---|
 | Z1 | 검사자 기준과 요구 ID | Y-03 | Ilyas I-02·I-03 | 검사자 기준 각 항목을 요구 ID에 연결한다. 검수는 `TASK.md`의 같은 ID 집합 전체를 판정한다 | 충돌 없음 |
-| Z2 | 실패 정책과 사다리 | Y-04 | 이 레포 사다리(`SKILL.md:57-70`) | 두 번째 실패에서 자동 재시도를 멈추고 상향을 판정하며 세 번째 실패와 범위 위반에서 정지한다 | Youssef는 두 번째 실패에서 정지를 요구하고 사다리는 상향한다. 청사진 §2가 합친 안을 제안한다 |
+| Z2 | 실패 정책과 사다리 | Y-04 | 이 레포 사다리(`SKILL.md:57-70`) | 두 번째 실패에서 자동 재시도를 멈추고 상향을 판정하며 세 번째 실패와 범위 위반에서 정지한다 | Youssef는 두 번째 실패에서 정지를 요구하고 사다리는 상향한다. 청사진 결정 D12가 둘을 합쳤다 |
 | Z3 | `Do Not Repeat`와 활성 결정 | Y-02 | Ilyas I-04 | 실패한 접근은 `PROGRESS.md`, 유효한 결정은 `docs/decisions.md`에 둔다. `[promote]`로 잇는다 | 충돌 없음 |
 | Z4 | 작업 디렉터리 구조 | Y-01·Y-06 | 사용자 D2·D3 | Youssef의 파일 4개 구조에서 `LOOP_INSTRUCTIONS.md`를 빼고 `REFS.md`와 `orders/`를 더한다. 기본은 gitignore다 | Youssef의 구조는 루프 전용이다. 위임 발주문이라는 단위는 사용자 결정이 더했다 |
-| Z5 | 쓰기 범위 검사 시점 | Y-07 | 사용자 D4 | Youssef의 회차 안 검사 단계를 작업 종료 시점의 스크립트로 옮긴다 | 도중 차단이 아니라 사후 탐지다. 청사진 §10 항목 2·3이 한계를 적는다 |
+| Z5 | 쓰기 범위 검사 시점 | Y-07 | 사용자 D4 | Youssef의 회차 안 검사 단계를 작업 종료 시점의 스크립트로 옮긴다 | 도중 차단이 아니라 사후 탐지다. 청사진 §10 항목 1·2가 한계를 적는다 |
 | Z6 | 시도 횟수 값 | Y-05·Y-13 | HQ 운영 계약 | 필드만 가져오고 값은 작업별로 정한다 | HQ 운영 계약도 packet별 횟수를 따른다(HQ `HQ-TEAM-OPERATING-CONTRACT.md` 항목 4) |
 
 ## 5. adopt 구현 계획
 
 | 판정 | 청사진 절 | 재구축 단계 | 담당 tier |
 |---|---|---|---|
-| Y-01 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P7, P8 | `executor-high`, `executor-med` |
-| Y-02 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P8 | `executor-med` |
-| Y-03 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) · [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) | P8, P9 | `executor-med`, `executor-high` |
-| Y-04 | [§2 실패 정책](../blueprint/delegate-first-v2.md#실패-정책) | P7 | `executor-high` |
-| Y-05 | [§2 실패 정책](../blueprint/delegate-first-v2.md#실패-정책) | P8 | `executor-med` |
-| Y-06 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P7 | `executor-high` |
-| Y-07 | [§7 close-task.sh](../blueprint/delegate-first-v2.md#close-tasksh) | P7 | `executor-high` |
+| Y-01 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P2 | `executor-max` |
+| Y-02 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P2 | `executor-max` |
+| Y-03 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) · [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) | P2, P10 | `executor-max`, `executor-high` |
+| Y-04 | [§2 실패 정책](../blueprint/delegate-first-v2.md#실패-정책) | P5 | `executor-max` |
+| Y-05 | [§2 실패 정책](../blueprint/delegate-first-v2.md#실패-정책) | P2 | `executor-max` |
+| Y-06 | [§3 작업 디렉터리 규격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P2 | `executor-max` |
+| Y-07 | [§7 close-task.sh](../blueprint/delegate-first-v2.md#close-tasksh) | P5 | `executor-max` |
 
 구현 순서는 샌드박스 테스트 `scripts/test-delegate-scripts.sh`를 먼저 쓰고 실패를 확인한 뒤 스크립트를 구현한다. 각 케이스가 실제로 실패를 재현하는지(비공허성)도 테스트가 확인한다.
 

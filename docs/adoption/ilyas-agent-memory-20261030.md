@@ -48,7 +48,7 @@
 | I-15 | 품질·예산 5축 gate | HQ `HQ-TEAM-OPERATING-CONTRACT.md` 항목 6 · RI `integrated-insights.md` §3 ⑥ | defer | 위임 로그 7열에 토큰·비용 칸이 없고(`lint-delegate-first.py:87`) 계측 수단이 없다. 필요한 실측은 서브에이전트 전사에서 토큰을 집계할 수 있는지다 | 전사 `.jsonl`의 usage 필드로 한 작업의 토큰을 합산하는 스크립트가 가능한지 시험한다 |
 | I-16 | 측정 항목(재설명·누락 요구·재요청, 시간·토큰) | RI `integrated-insights.md` §3 ⑥ · RI `insights-and-application.md` 「한 번만 해볼 실험」 | adopt | 이 레포에는 위임 효과를 재는 기록이 없다. 시간과 토큰은 I-15 때문에 수기 값 또는 「계측 수단 없음」으로 둔다 | `grep -c -E '^(재설명 횟수\|누락 요구 수\|재요청 횟수\|시간\|토큰):' .delegate/20261030-delegate-first-v2/PROGRESS.md`가 5다 |
 | I-17 | MetaEnsemble·원문 예제 설치 | RI `integrated-insights.md` §4 「보류」 행 · HP §3 | skip | 지시서가 금지한다. 이 레포의 구성은 로컬 파일과 훅이다(`README.md:3`) | 해당 없음 |
-| I-18 | 저자 자체 평가 수치(예산 포함 통과율 등) | RI `integrated-insights.md` §2 | skip | 저자 평가이고 재현하지 않았다. 청사진 §1 원칙 P7과 §10 항목 4가 비수입을 적는다 | 해당 없음 |
+| I-18 | 저자 자체 평가 수치(예산 포함 통과율 등) | RI `integrated-insights.md` §2 | skip | 저자 평가이고 재현하지 않았다. 청사진 §1 원칙 P7과 §10 항목 3이 비수입을 적는다 | 해당 없음 |
 
 ## 4. 다른 자료와 결합한 지점
 
@@ -57,9 +57,9 @@ Youssef 루프 자료와 사용자 결정 D1~D7을 이 자료에 섞은 곳이�
 | # | 결합 요소 | Ilyas 쪽 | 결합한 자료 | 결합 방식 | 충돌·이탈 |
 |---|---|---|---|---|---|
 | X1 | 발주문 「완료 증거」와 검사자 기준 | I-01·I-02 | Youssef 가드레일 1(RY `JAVA21-HARNESS-LOOP-GUARDRAILS-2026-09.md`) | 발주문의 요구 ID별 증거와 `TASK.md`의 검사자 pass/fail 기준을 같은 ID로 잇는다 | 충돌 없음 |
-| X2 | ID별 판정과 실패 정책 | I-03 | Youssef 실패 정책(RY `CLAUDE-LOOP-ENGINEERING-REFERENCE-2026-09.md` §5) + 이 레포 사다리(`SKILL.md:57-70`) | 같은 ID가 두 번 실패하면 자동 재시도를 멈추고 상향을 판정한다 | Youssef는 두 번째 실패에서 정지를 요구하고 사다리는 상향한다. 청사진 §2가 둘을 합친 안을 제안한다 |
+| X2 | ID별 판정과 실패 정책 | I-03 | Youssef 실패 정책(RY `CLAUDE-LOOP-ENGINEERING-REFERENCE-2026-09.md` §5) + 이 레포 사다리(`SKILL.md:57-70`) | 같은 ID가 두 번 실패하면 자동 재시도를 멈추고 상향을 판정한다 | Youssef는 두 번째 실패에서 정지를 요구하고 사다리는 상향한다. 청사진 결정 D12가 둘을 합쳤다 |
 | X3 | 활성 결정과 실패 접근 | I-04 | Youssef 가드레일 2 | 유효한 결정은 `docs/decisions.md`에, 시도했다 실패한 접근은 `PROGRESS.md`의 `Do Not Repeat`에 둔다. `[promote]` 표시로 이어 준다 | 충돌 없음 |
-| X4 | 조건부 리뷰와 강제 수단 | I-05 | 사용자 D4 | 트리거 충족 여부를 `close-task.sh`가 사후 검사한다. 훅은 형식만 본다 | HQ 계약은 새 훅을 추가하지 않는다고 적는다(HQ `HQ-TEAM-OPERATING-CONTRACT.md` 「사용 진입점」 2문단). 이 레포는 훅이 핵심 구성이라 이탈한다 |
+| X4 | 조건부 리뷰와 강제 수단 | I-05 | 청사진 결정 D8(D4 대체) | 트리거 충족 여부를 `close-task.sh`가 사후 검사한다. 훅은 발주문을 보지 않는다 | HQ 계약은 새 훅을 추가하지 않는다고 적는다(HQ `HQ-TEAM-OPERATING-CONTRACT.md` 「사용 진입점」 2문단). 결정 D8로 이 레포도 발주 계약 훅을 만들지 않는다 |
 | X5 | 작업 단위 문서 위치 | I-01·I-04 | 사용자 D2·D3 | HQ의 packet 방식 대신 프로젝트 안 `.delegate/<slug>/`를 쓰고 기본은 gitignore다 | HQ는 packet을 추적 대상으로 둔다. 이 레포는 승격한 문서만 추적한다 |
 | X6 | 측정 기록 위치 | I-16 | 사용자 D2 | 위임 로그 7열을 늘리지 않고 `PROGRESS.md`의 측정 절에 둔다 | 위임 로그의 7열 스키마는 lint가 강제하므로 열을 더하지 않는다 |
 | X7 | 모델·effort 라우팅 | HQ `PORTING.md` 「적용 전에 알아야 할 경계」(라우팅은 이식 기본값이 아니다) | 이 레포 B-11·B-12·B-18 | 경계 문구를 그대로 지킨다. 이 레포의 라우팅은 이 레포에 설치된 tier 핀으로 따로 정한다 | 충돌 없음 |
@@ -68,17 +68,17 @@ Youssef 루프 자료와 사용자 결정 D1~D7을 이 자료에 섞은 곳이�
 
 | 판정 | 청사진 절 | 재구축 단계 | 담당 tier |
 |---|---|---|---|
-| I-01 | [§4 발주문 규격](../blueprint/delegate-first-v2.md#4-발주문-규격) | P8, P9 | `executor-med`, `executor-high` |
-| I-02 | [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P7 | `executor-high` |
-| I-03 | [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P7 | `executor-high` |
-| I-04 | [§5 참고 문서 분류](../blueprint/delegate-first-v2.md#5-참고-문서-분류) | P11 | `executor-med` |
-| I-05 | [§3 템플릿 골격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P7, P13 | `executor-high`, `reviewer-high` |
-| I-06 | [§8 위임하지 않는 경우](../blueprint/delegate-first-v2.md#8-위임하지-않는-경우) | P9 | `executor-high` |
-| I-16 | [§3 템플릿 골격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P18 | 메인 |
+| I-01 | [§4 발주문 규격](../blueprint/delegate-first-v2.md#4-발주문-규격) | P2, P10 | `executor-max`, `executor-high` |
+| I-02 | [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P5 | `executor-max` |
+| I-03 | [§2 위임 흐름](../blueprint/delegate-first-v2.md#2-위임-흐름) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P5 | `executor-max` |
+| I-04 | [§5 참고 문서 분류](../blueprint/delegate-first-v2.md#5-참고-문서-분류) | P13 | `executor-med` |
+| I-05 | [§3 템플릿 골격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) · [§7 강제 장치](../blueprint/delegate-first-v2.md#7-강제-장치) | P5, P15 | `executor-max`, `reviewer-high` |
+| I-06 | [§8 위임하지 않는 경우](../blueprint/delegate-first-v2.md#8-위임하지-않는-경우) | P10 | `executor-high` |
+| I-16 | [§3 템플릿 골격](../blueprint/delegate-first-v2.md#3-작업-디렉터리-규격) | P20 | 메인 |
 
 ### 작업 한 건 적용 계획
 
-적용 대상은 재구축 단계 P6(훅 B-19 구현)이다. B-19 적용 범위가 청사진 §7의 A안으로 판정된 것을 전제한다. 계약 → 실행 → 별도 검수 → 요구별 증거 순서로 진행한다.
+청사진 결정 D8로 B-19를 만들지 않는다. 그래서 이 계획의 적용 대상은 메인이 다시 정한다. 아래 계약과 측정 항목은 B-19를 대상으로 쓴 원래 안이다. 계약 → 실행 → 별도 검수 → 요구별 증거 순서는 새 대상에도 같다.
 
 계약(발주문 6칸)
 
@@ -121,4 +121,4 @@ Youssef 루프 자료와 사용자 결정 D1~D7을 이 자료에 섞은 곳이�
 | U3 | 다른 PC·OS | `close-task.sh`와 `new-task.sh`는 macOS의 bash로만 설계했다. 다른 환경은 시험하지 않았다 |
 | U4 | 효과 | 6칸 계약과 요구 ID 검사가 재설명·재요청을 줄이는지 측정 전이다. 효과가 없으면 청사진 §1 원칙 P6에 따라 규칙을 줄인다 |
 | U5 | 위임 이득 | 저자 평가는 단일 컨텍스트 작업에서 위임의 이득을 입증하지 않는다. 이 레포의 과잉 위임 위험은 I-06 판정으로만 완화했다 |
-| U6 | 훅 end-to-end | smoke는 입력 JSON 시험이다. 실제 하네스 경로의 차단은 전파 뒤 별도 실측이 필요하다(청사진 §10 항목 10) |
+| U6 | 훅 end-to-end | smoke는 입력 JSON 시험이다. 실제 하네스 경로의 차단은 전파 뒤 별도 실측이 필요하다(청사진 §10 항목 8) |
