@@ -113,3 +113,5 @@
 | 2026-10-30 | reviewer-high | [v2-11rr-opus-high] resume 백스톱 적대 리뷰 | opus | high | Agent(tier) | Bash 한 번에서 정체해 중단했다. 판정 없음 |
 | 2026-10-30 | reviewer-high | [v2-11rr2-opus-high] resume 백스톱 적대 리뷰 재시도 | opus | high | Agent(tier) | H1: 전역 command가 프로젝트 경로 JS를 실행한다(`/tmp/rr2/PWNED` 재현). L3: 명령 태그 오탐·enforce 주석·문서 |
 | 2026-10-30 | executor-max | [v2-11fix-opus-high] 백스톱 H1·L3 수정과 전역 command 교체 | opus | high | Agent(tier) | `$HOME` 래퍼 `resume-backstop.sh`, test-resume-backstop 52/52(수정 전 12 FAIL), 전역 settings command 교체(백업 dfv2-resume-fix-20261030-233712). 실측 F1·F4 차단, F2·F3 통과, 미끼 표식 없음 |
+| 2026-10-31 | reviewer-high | [v2-11rr3-opus-high] e2c092e 확인 리뷰 | opus | high | Agent(tier) | H 닫힘(미끼 재현 표식 0). L 2건은 B-20으로 넘겼다. 전사 opus·high 일치 |
+| 2026-10-31 | executor-med | [v2-11b20-sonnet-medium] B-20 백스톱 알려진 한계 기록과 위임 로그 갱신 | sonnet | medium | Agent(tier) | B-20 한계 5항목 기록 |

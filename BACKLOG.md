@@ -295,3 +295,13 @@ B-16 수정으로 복원 범위가 좁아졌지만, custom-only 백업을 손상
 - 같은 grep 폴백은 훅이 아닌 `"command"` 키도 본다. `statusLine.command` 값이 `enforce-subagent-model`을 언급하면 옛 등록으로 오탐한다.
 - `uncomment()`는 백슬래시로 이스케이프한 백틱(\`)과 HTML 태그 속성 안의 백틱도 코드 스팬 시작으로 본다. 그래서 바로 뒤의 실제 주석 `<!--` 안에 숨은 행을 반환으로 센다(fail-open). 일부러 만들어야 생기는 입력이다. 고치려면 앞에 홀수 개의 `\`가 붙은 백틱 런을 건너뛰면 된다. 재현: 표 아래에 ``x \`<!--``, `| 1 | 01-x | 승인 |`, `-->` 순서로 둔다.
 - 문단 바로 다음 줄의 `2. foo`(1이 아닌 번호)를 목록 항목으로 보아 그 뒤 `---`를 setext로 치지 않는다. 그래서 회차 절이 닫히지 않는다(fail-open). 10자리 이상 번호도 같다. 재현: 문단 줄, `2. foo`, `---` 순서로 둔다.
+
+## B-20 — resume 백스톱의 알려진 한계
+
+**상태**: 기록만 한다(조치 없음). 백스톱은 스킬 세션의 훅 유지 공백을 메우는 장치다. 아래 한계는 알고도 그대로 둔다.
+
+- 프로젝트 사본 `enforce-subagent-model.cjs`를 읽을 수 없으면(예: `chmod 000`) `resume-backstop.cjs`(약 101·117행)의 해시 계산이 예외를 던진다. 그래서 fail-closed rc=2가 되고 정상 호출도 막힌다. 레포가 할 수 있는 일은 스킬 세션 DoS뿐이다. frontmatter 훅도 같은 사본을 실행하므로 범위는 넓어지지 않는다. 재현: 프로젝트 사본에 `chmod 000`을 걸고 `/delegate-first` 세션에서 Agent를 호출한다.
+- 전역 command와 `$HOME` 래퍼는 `bash`·`node`를 PATH로 찾는다. 사용자가 PATH에 `.`이나 빈 항목을 넣으면 레포의 shim이 실행될 수 있다. 일반 훅에 공통인 조건이다.
+- 프로젝트 사본으로 넘어가는 경우는 HOME에 `resume-backstop.cjs`만 있고 HOME의 `enforce-subagent-model.cjs`가 없을 때뿐이다(부분 설치).
+- 미검증: `--continue`, `/resume` 선택기, `--fork-session`, 자동 compact.
+- handoff나 `/resume-session`으로 이어 가는 새 세션에는 `/delegate-first` 호출 기록이 없다. 그래서 백스톱이 강제하지 않는다(설계대로). 이어 간 뒤 `/delegate-first`를 다시 호출해야 한다.
