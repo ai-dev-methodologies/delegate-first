@@ -77,58 +77,82 @@ fail() { echo "FAIL $*"; fails=$((fails + 1)); }
 
 # progress_returned <stem> — PROGRESS.md's 「회차」 table (columns as in
 # templates/PROGRESS.md: 회차 | order | 반환 | ...) has a row whose order
-# cell is exactly <stem> and whose 반환 cell is not empty. The section runs
-# from `## 회차` to the next `#`/`##` or setext (`---`/`===` under a text
-# line) heading. These do not count: rows under a `###` or deeper
-# subsection, lines inside ``` or ~~~ fences, lines indented 4+ columns, and
-# lines inside an HTML comment (a `<!--` left open on a line runs to the
-# next `-->`). A 반환 cell is empty when, with comments, `&nbsp;`, `<br>`,
-# empty code spans, NBSP, U+3000 and zero-width characters removed, it is a
-# run of the placeholders in PH (case-insensitive) or of dashes only.
-PH='없음
-대기
-(대기)
-대기 중
+# cell is exactly <stem> and whose 반환 cell holds a letter. The section
+# runs from `## 회차` (closing `#`s allowed) to the next `#`/`##` or setext
+# (`---`/`===` under a text line that is not a list item) heading. These do
+# not count: rows under a `###` or deeper subsection, lines inside ``` or
+# ~~~ fences, lines indented 4+ columns, and lines inside an HTML comment (a
+# `<!--` left open on a line runs to the next `-->`; one inside a backtick
+# code span is literal). A 반환 cell holds a letter when, with comments
+# removed, letters() finds one both with the stripped characters deleted
+# and with them turned into spaces, so neither joining nor splitting words
+# turns a placeholder into a value.
+PH='대기
+대기중
+중
+없음
 미반환
+미정
 tbd
 todo
-n/a
+n
+a
 na
-pending'
+pending
+wip'
 progress_returned() {
   [ -f "$dir/PROGRESS.md" ] &&
-    STEM="$1" PH="$PH" LC_ALL=C \
-    WS="$(printf '\302\240|\343\200\200|\342\200\200|\342\200\201|\342\200\202|\342\200\203|\342\200\204|\342\200\205|\342\200\206|\342\200\207|\342\200\210|\342\200\211|\342\200\212|\342\200\257|\342\201\237')" \
-    ZW="$(printf '\342\200\213|\342\200\214|\342\200\215|\342\201\240|\357\273\277|\302\255')" \
-    DASH="$(printf -- '-|\342\200\223|\342\200\224')" awk '
+    STEM="$1" PH="$PH" LC_ALL=C awk '
       BEGIN { n = split(ENVIRON["PH"], p, "\n"); for (k = 1; k <= n; k++) PH[p[k]] = 1 }
       # uncomment <s> — <s> without closed comments; an open one cuts the
-      # rest and sets incom.
-      function uncomment(s,   i, j, out) {
-        while ((i = index(s, "<!--")) > 0) {
-          out = out substr(s, 1, i - 1)
-          if (!(j = index(substr(s, i + 4), "-->"))) { incom = 1; return out }
-          s = substr(s, i + 4 + j + 2)
+      # rest and sets incom. A backtick code span is copied as is; a run
+      # with no closing run of the same length is literal.
+      function uncomment(s,   i, j, n, out) {
+        while (match(s, /<!--|`+/)) {
+          if (substr(s, RSTART, 1) == "`") {
+            n = RLENGTH; i = RSTART + n
+            if ((j = span_end(substr(s, i), n))) i += j - 1
+            out = out substr(s, 1, i - 1); s = substr(s, i)
+            continue
+          }
+          out = out substr(s, 1, RSTART - 1); s = substr(s, RSTART + 4)
+          if (!(j = index(s, "-->"))) { incom = 1; return out }
+          s = substr(s, j + 3)
         }
         return out s
       }
-      function dashes(w) { gsub(ENVIRON["DASH"], "", w); return w == "" }
-      function placeholders(s,   n, w, i) {
-        gsub(/`+[[:space:]]*`+/, " ", s)  # empty code spans
-        n = split(s, w, " ")
-        for (i = 1; i <= n; i++) {
-          if (i < n && ((w[i] " " w[i + 1]) in PH)) i++
-          else if (!(w[i] in PH) && !dashes(w[i])) return 0
+      # span_end <r> <n> — position in <r> just past the first run of
+      # exactly <n> backticks, or 0.
+      function span_end(r, n,   k) {
+        while (match(r, /`+/)) {
+          if (RLENGTH == n) return k + RSTART + n
+          k += RSTART + RLENGTH - 1; r = substr(r, RSTART + RLENGTH)
         }
-        return 1
+        return 0
       }
-      function empty_cell(r,   z) {
-        r = tolower(r)
-        gsub(/&nbsp;|<br[[:space:]]*\/?>/, " ", r); gsub(ENVIRON["WS"], " ", r)
-        # a zero-width character may stand for a space or for nothing
-        z = r; gsub(ENVIRON["ZW"], " ", z); gsub(ENVIRON["ZW"], "", r)
-        return placeholders(z) || placeholders(r)
+      # letters <v> <sep> — 1 when a word other than a placeholder in PH
+      # (case-insensitive) is left after tags, character references, the
+      # marks *_`~, non-ASCII bytes outside Hangul syllables and ASCII
+      # punctuation become <sep>. Letters are Hangul syllables
+      # (U+AC00-U+D7A3, UTF-8 EA B0 80-ED 9E A3) and ASCII alphanumerics
+      # only; any other script counts as no letter (known limit).
+      function letters(v, sep,   out, n, w, i) {
+        gsub(/<[^>]*>/, sep, v)
+        gsub(/&[A-Za-z][A-Za-z0-9]*;|&#[0-9]+;|&#[xX][0-9A-Fa-f]+;/, sep, v)
+        gsub(/[*_`~]/, sep, v)
+        while (match(v, /[\200-\377]/)) {
+          out = out substr(v, 1, RSTART - 1); v = substr(v, RSTART)
+          if (match(v, /^(\352[\260-\277][\200-\277]|[\353\354][\200-\277][\200-\277]|\355[\200-\235][\200-\277]|\355\236[\200-\243])/)) {
+            out = out substr(v, 1, 3); v = substr(v, 4)
+          } else { out = out sep; v = substr(v, 2) }
+        }
+        v = tolower(out v)
+        gsub(/[^a-z0-9 \t\200-\377]/, sep, v)
+        n = split(v, w, " ")
+        for (i = 1; i <= n; i++) if (!(w[i] in PH)) return 1
+        return 0
       }
+      function empty_cell(r) { return !letters(r, " ") || !letters(r, "") }
       { sub(/\r$/, ""); t = $0; sub(/^(   |  | )/, "", t) }  # up to 3 spaces of indent
       fn {
         if (substr(t, 1, 1) == fc && match(t, /^(`+|~+)[[:space:]]*$/) &&
@@ -146,13 +170,15 @@ progress_returned() {
       t ~ /^[ \t]/ { next }  # 4+ columns: code, or a paragraph continuation
       match(t, /^#+([[:space:]]|$)/) {
         if (match(t, /^#+/) && RLENGTH <= 2) {
-          insec = (t ~ /^## 회차[[:space:]]*$/); insub = 0
+          insec = (t ~ /^## 회차([[:space:]]+#+)?[[:space:]]*$/); insub = 0
         } else insub = 1
         para = 0; next
       }
-      para && t ~ /^(=+|-+)[[:space:]]*$/ { insec = 0; para = 0; next }  # setext
+      # para: 1 in a paragraph, 2 in a list item, where an underline is no
+      # setext heading
+      para == 1 && t ~ /^(=+|-+)[[:space:]]*$/ { insec = 0; para = 0; next }  # setext
       t ~ /^[-*_ \t]+$/ { para = 0; next }  # thematic break
-      t !~ /^\|/ { para = 1; next }
+      t !~ /^\|/ { para = (para == 2 || t ~ /^([-*+]|[0-9]+[.)])([ \t]|$)/) ? 2 : 1; next }
       {
         para = 0
         if (!insec || insub) next

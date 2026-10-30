@@ -615,6 +615,38 @@ progress_case close_rule_after_table_keeps_section_passes 0 "---\n$ROW"
 progress_case close_setext_underline_in_fence_keeps_section_passes 0 "\`\`\`\nOpen Items\n---\n\`\`\`\n$ROW"
 progress_case close_delimiter_row_is_not_setext_passes 0 "| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n$ROW"
 
+# A5: a 반환 cell counts only when a letter (Hangul syllable or ASCII
+# alphanumeric) survives: tags, character references, `*_\`~`, other
+# non-ASCII and ASCII punctuation go, then the placeholder words. Every
+# other character, dash, filler or zero-width one is no letter.
+i=0
+for ret in '대기중' '\343\205\241' '\357\274\215' '**대기**' '`대기`' '(대기 중)' '-대기' \
+  '\342\200\220' '\342\200\221' '\342\200\222' '\342\200\225' '\342\210\222' '\342\224\200' \
+  '&#8203;' '&#x200B;' '&#160;' '&ensp;' '&emsp;' '&zwj;' '\343\205\244' '\341\205\237' \
+  '<span></span>' '<p></p>' '미정' 'WIP' '중' 'n/a — 대기' '대&#8203;기' '대<b></b>기' '대\302\267기'; do
+  i=$((i + 1))
+  progress_case "close_readonly_nonletter_return_fails[$i:$ret]" 1 "| 1 | 01-review-opus-high | $ret | | | |\n"
+done
+for ret in '대기 후 승인' '승인 - 대기 없음' 'OK' 'R1 통과' '승인' 'v2 반환' '140f73a' '<b>승인</b>'; do
+  progress_case "close_readonly_letter_return_passes[$ret]" 0 "| 1 | 01-review-opus-high | $ret | | | |\n"
+done
+
+# A6: `<!--`·`-->` inside a backtick code span are literal; an unclosed
+# backtick run is literal too, so a comment after it still opens.
+progress_case close_comment_opener_in_code_span_passes 0 "| 0 | 00-y-opus-high | 반환: \`<!--\` 수정 | | | |\n$ROW"
+progress_case close_comment_opener_in_double_code_span_passes 0 "| 0 | 00-y-opus-high | \`\`a \` <!-- b\`\` | | | |\n$ROW"
+progress_case close_comment_after_unclosed_backtick_hides_row_fails 1 "| 0 | 00-y-opus-high | \` <!-- 보관 | | | |\n$ROW-->\n"
+
+# A7: `---` or `===` after a list item (or its lazy continuation) is no
+# setext underline and keeps the section; `## 회차 #` with a closing
+# sequence still opens it, `## 회차#` does not.
+progress_case close_rule_after_list_item_keeps_section_passes 0 "- 메모\n---\n$ROW"
+progress_case close_rule_after_ordered_item_keeps_section_passes 0 "1. 메모\n---\n$ROW"
+progress_case close_rule_after_lazy_list_line_keeps_section_passes 0 "* 메모\n이어짐\n---\n$ROW"
+progress_case close_equals_after_list_item_keeps_section_passes 0 "+ 메모\n===\n$ROW"
+progress_case close_round_heading_with_closing_hashes_passes 0 "## Open Items\n## 회차 ##\n$ROW"
+progress_case close_round_heading_glued_hash_fails 1 "## Open Items\n## 회차#\n$ROW"
+
 # M2: files that are not NN-<name>.md must fail instead of being skipped
 d="$(task_repo c18)"
 write_order "$d/.delegate/$SLUG/orders/01-impl-sonnet-high.md" executor-high
