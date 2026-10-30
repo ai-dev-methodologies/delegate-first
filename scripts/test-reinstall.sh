@@ -728,6 +728,26 @@ f3_shape_case caseF3_empty_block_hooks_warns '---\nname: x\nhooks:\n---\nbody\n'
     else
       record "caseOldReg_hooks_command_warns[$mode]" FAIL "want exactly one warning naming the project settings.json (rc=$rc warnings=$n_warn out=[$out])"
     fi
+
+    # The resume backstop entry (hooks/resume-backstop.settings.json) is a
+    # current registration, not a leftover one: §0 stays silent about it.
+    d="$(case_dir "caseOldReg_backstop_$mode")"
+    mkdir -p "$d/home/.claude" "$d/dst/.claude"
+    for f in "$d/home/.claude/settings.local.json" "$d/dst/.claude/settings.json" "$d/dst/.claude/settings.local.json"; do
+      echo '{}' > "$f"
+    done
+    node -e '
+      const fs = require("fs");
+      const entry = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      fs.writeFileSync(process.argv[2], JSON.stringify({ hooks: { PreToolUse: [entry] } }, null, 2) + "\n");' \
+      "$REPO_ROOT/.claude/skills/delegate-first/hooks/resume-backstop.settings.json" "$d/home/.claude/settings.json"
+    out="$(PATH="$path_for_run" run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ] && grep -qF resume-backstop.cjs "$d/home/.claude/settings.json" && ! echo "$out" | grep -qF "옛 settings 훅 등록"; then
+      record "caseOldReg_backstop_entry_silent[$mode]" PASS
+    else
+      record "caseOldReg_backstop_entry_silent[$mode]" FAIL "warned for the resume backstop entry (rc=$rc out=[$out])"
+    fi
   done
 }
 

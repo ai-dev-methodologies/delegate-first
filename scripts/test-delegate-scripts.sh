@@ -284,7 +284,7 @@ pcb="$SANDBOX_ROOT/precommit-bait"
 mkdir -p "$pcb/.githooks" "$pcb/scripts"
 cp "$REPO_ROOT/.githooks/pre-commit" "$pcb/.githooks/pre-commit"
 printf 'import sys\nsys.exit(0)\n' > "$pcb/scripts/lint-delegate-first.py"
-for s in test-lint smoke-hook test-reinstall test-delegate-scripts; do
+for s in test-lint smoke-hook test-reinstall test-delegate-scripts test-resume-backstop; do
   printf '%s\n' 'echo ran >> "$BAIT_LOG"' \
     'env | sed -n "s/^\(GIT_[A-Z0-9_]*\)=.*/\1/p" >> "$BAIT_LOG"' > "$pcb/scripts/$s.sh"
 done
@@ -299,10 +299,10 @@ pc_rc=$?
 leaked=""
 for v in $bait_vars; do grep -qx "$v" "$pcb/env.log" && leaked="$leaked $v"; done
 ran="$(grep -c '^ran$' "$pcb/env.log")"
-if [ "$pc_rc" -eq 0 ] && [ "$ran" -eq 4 ] && [ -z "$leaked" ]; then
+if [ "$pc_rc" -eq 0 ] && [ "$ran" -eq 5 ] && [ -z "$leaked" ]; then
   record precommit_unsets_every_local_env_var PASS
 else
-  record precommit_unsets_every_local_env_var FAIL "rc=$pc_rc stubs-ran=$ran/4 leaked:[${leaked# }]"
+  record precommit_unsets_every_local_env_var FAIL "rc=$pc_rc stubs-ran=$ran/5 leaked:[${leaked# }]"
 fi
 
 # -------------------------------------------------------------- close-task

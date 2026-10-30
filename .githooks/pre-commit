@@ -64,8 +64,13 @@ echo "[pre-commit] scripts/test-delegate-scripts.sh 실행(new-task.sh·close-ta
 /bin/bash "$REPO_ROOT/scripts/test-delegate-scripts.sh"
 TEST_DELEGATE_STATUS=$?
 
-if [ "$LINT_STATUS" -ne 0 ] || [ "$TEST_LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ] || [ "$TEST_REINSTALL_STATUS" -ne 0 ] || [ "$TEST_DELEGATE_STATUS" -ne 0 ]; then
-  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, test-lint exit=$TEST_LINT_STATUS, smoke exit=$SMOKE_STATUS, test-reinstall exit=$TEST_REINSTALL_STATUS, test-delegate-scripts exit=$TEST_DELEGATE_STATUS. 커밋을 막습니다." >&2
+# resume 백스톱 훅(resume-backstop.cjs)과 그 전역 등록 항목의 샌드박스 회귀망.
+echo "[pre-commit] scripts/test-resume-backstop.sh 실행(resume 백스톱 샌드박스 회귀)..."
+bash "$REPO_ROOT/scripts/test-resume-backstop.sh"
+TEST_BACKSTOP_STATUS=$?
+
+if [ "$LINT_STATUS" -ne 0 ] || [ "$TEST_LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ] || [ "$TEST_REINSTALL_STATUS" -ne 0 ] || [ "$TEST_DELEGATE_STATUS" -ne 0 ] || [ "$TEST_BACKSTOP_STATUS" -ne 0 ]; then
+  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, test-lint exit=$TEST_LINT_STATUS, smoke exit=$SMOKE_STATUS, test-reinstall exit=$TEST_REINSTALL_STATUS, test-delegate-scripts exit=$TEST_DELEGATE_STATUS, test-resume-backstop exit=$TEST_BACKSTOP_STATUS. 커밋을 막습니다." >&2
   exit 1
 fi
 

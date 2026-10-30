@@ -421,7 +421,7 @@ pc_run() (
   mkdir -p "${bait}/scripts" "${bait}/.githooks"
   cp "${REPO_ROOT}/.githooks/pre-commit" "${bait}/.githooks/pre-commit"
   printf '%s\n' 'import sys' 'sys.exit(0)' > "${bait}/scripts/lint-delegate-first.py"
-  for s in test-lint smoke-hook test-reinstall test-delegate-scripts; do
+  for s in test-lint smoke-hook test-reinstall test-delegate-scripts test-resume-backstop; do
     printf '%s\n' \
       'echo "ran" >> "${BAIT_LOG}"' \
       'env | sed -n "s/^\(GIT_[A-Z0-9_]*\)=.*/\1/p" >> "${BAIT_LOG}"' \
@@ -452,11 +452,11 @@ PC_RAN="$(grep -c '^ran$' "${PC_SANDBOX}/env.log" 2>/dev/null || true)"
 PC_POISONED=no
 grep -q poisoned "${PC_SANDBOX}/bait/.git/config" 2>/dev/null && PC_POISONED=yes
 PC_SEEN="$(grep -c '^seen hooksPath= env=$' "${PC_SANDBOX}/env.log" 2>/dev/null || true)"
-if [ "${PC_RC}" = "0" ] && [ "${PC_RAN}" = "4" ] && [ -z "${PC_LEAKED}" ] && [ "${PC_POISONED}" = "no" ] &&
-   [ "${PC_SEEN}" = "4" ]; then
+if [ "${PC_RC}" = "0" ] && [ "${PC_RAN}" = "5" ] && [ -z "${PC_LEAKED}" ] && [ "${PC_POISONED}" = "no" ] &&
+   [ "${PC_SEEN}" = "5" ]; then
   fm_pass
 else
-  fm_fail "⑦: pre-commit이 git 환경을 스위트에 넘김 (커밋 rc=${PC_RC}, stub 실행 ${PC_RAN:-0}/4, 누출:${PC_LEAKED:- 없음}, 미끼 .git/config 오염: ${PC_POISONED}, 샌드박스가 -c·GIT_CONFIG_COUNT 설정을 보지 않은 stub ${PC_SEEN:-0}/4)"
+  fm_fail "⑦: pre-commit이 git 환경을 스위트에 넘김 (커밋 rc=${PC_RC}, stub 실행 ${PC_RAN:-0}/5, 누출:${PC_LEAKED:- 없음}, 미끼 .git/config 오염: ${PC_POISONED}, 샌드박스가 -c·GIT_CONFIG_COUNT 설정을 보지 않은 stub ${PC_SEEN:-0}/5)"
 fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
