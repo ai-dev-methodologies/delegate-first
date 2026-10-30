@@ -117,4 +117,4 @@
 출력 형식: <파일 경로 + 커밋 여부 + 보고 형식>
 ```
 
-같은 원인으로 2회 실패하면 [routing-matrix.md](routing-matrix.md)의 opus 상향을 따른다 — fork로 우회하지 않는다.
+상향이 필요하면 [routing-matrix.md](routing-matrix.md) (c)의 `executor-opus` 상향을 따른다 — fork로 우회하지 않는다.

@@ -49,12 +49,13 @@ run_case() {
   fi
 }
 
-# --- tier 5종: model 없이 호출 → pinned 목록 통과 (exit 0) ---
+# --- tier 6종: model 없이 호출 → pinned 목록 통과 (exit 0) ---
 run_case "tier explorer-low, model 없음" '{"tool_input":{"subagent_type":"explorer-low"}}' 0
 run_case "tier executor-med, model 없음" '{"tool_input":{"subagent_type":"executor-med"}}' 0
 run_case "tier executor-high, model 없음" '{"tool_input":{"subagent_type":"executor-high"}}' 0
 run_case "tier reviewer-high, model 없음" '{"tool_input":{"subagent_type":"reviewer-high"}}' 0
 run_case "tier judge-max, model 없음" '{"tool_input":{"subagent_type":"judge-max"}}' 0
+run_case "tier executor-opus, model 없음" '{"tool_input":{"subagent_type":"executor-opus"}}' 0
 
 # --- general-purpose: pinned 아님 → model 없으면 차단 ---
 run_case "general-purpose, model 없음" '{"tool_input":{"subagent_type":"general-purpose"}}' 2
@@ -70,6 +71,7 @@ run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"s
 run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 0
 run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus"}}' 0
 run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable"}}' 0
+run_case "tier executor-opus + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"executor-opus","model":"opus"}}' 0
 
 # --- B-11: tier + model 명시, 기대값과 불일치 → 차단 (exit 2, 조용한 강등/승급 봉인) ---
 # 주의: 이 두 케이스는 B-11 이전엔 "tier executor-high + model opus 명시"가
@@ -80,6 +82,7 @@ run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subag
 # 의도된 동작 변경이지 회귀가 아니다.
 run_case "tier executor-high + model opus(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 2
 run_case "tier judge-max + model opus(강등 시도 → 차단)" '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2
+run_case "tier executor-opus + model sonnet(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-opus","model":"sonnet"}}' 2
 
 # --- B-11: break-glass ALLOW_TIER_MODEL_OVERRIDE=1 → 불일치도 통과 ---
 run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + judge-max + model opus(불일치)" \

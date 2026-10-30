@@ -11,6 +11,8 @@
 
 > `--rollback`은 없다. 문제가 생기면 §5를 따른다 — 복구는 별도 복원 기계가 아니라 정본을 원하는 커밋으로 되돌려 다시 설치하는 것이다. 전역 훅·규칙 전파는 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 `--propagate-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§3의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
 
+전역(`~/.claude`)에 새 tier(예: 2026-10-30 `executor-opus`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙·훅만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
+
 > **실행 승인 게이트**: 이 절차는 **사용자 명시 승인 후에만** 실행한다(스크립트 경로든 수동 경로든 동일). 대상 프로젝트의 로컬 스킬은 **의도적으로 git 추적 밖(untracked)** 이라 되돌릴 git 히스토리가 없다 — 백업(1단계)을 건너뛰면 복구 수단이 없다.
 
 ---
@@ -33,7 +35,7 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 | 로컬 사본 존재 | `ls <대상>/.claude/skills/delegate-first` | SKILL.md, references/, HANDOFF.md, NEW-REPO-PROMPT.md |
 | 훅 위치 | `ls ~/.claude/hooks/enforce-subagent-model.cjs` | 존재(전역 설치) |
 | 훅 등록 위치 | `grep -n "enforce-subagent-model" ~/.claude/settings.json "$DST/.claude/settings.json" 2>/dev/null` | 전역(`~/.claude/settings.json`)에 등록돼 있으면 전역 유지 / 대상 프로젝트 `.claude/settings.json`으로 전환하려면 그쪽에 등록 — 둘 다 없으면 §4의 2번(훅 차단 스모크)이 실패한다. 이 표의 판정이 §4-2번의 전제다. |
-| 동명 에이전트 model 핀 확인 | `grep -L '^model:' "$DST"/.claude/agents/{explorer-low,executor-med,executor-high,reviewer-high,judge-max}.md` | 출력 0건(모두 model 핀 보유). 핀이 없는 동명 에이전트가 있으면 훅 화이트리스트가 그 이름을 통과시켜 세션 모델 상속 구멍이 된다. |
+| 동명 에이전트 model 핀 확인 | `grep -L '^model:' "$DST"/.claude/agents/{explorer-low,executor-med,executor-high,executor-opus,reviewer-high,judge-max}.md` | 출력 0건(모두 model 핀 보유). 핀이 없는 동명 에이전트가 있으면 훅 화이트리스트가 그 이름을 통과시켜 세션 모델 상속 구멍이 된다. |
 
 ## 1. 백업 (건너뛰기 금지)
 
@@ -84,9 +86,9 @@ hunk 수를 세지 말고 각 hunk의 **내용**을 위 목록과 대조한다. 
 
 > **결정 필요 (prompt-templates.md의 goone 예시 제거)**: goone-rest의 프롬프트 템플릿에서 실제 goone 예시가 사라진다. 실무에서 그 예시가 유용하면 (a) 백업본에서 예시 블록만 goone 로컬로 되살리거나 (b) goone-rest의 자체 문서(`docs/handoff/`)에 프로젝트 예시집으로 옮긴다. 사용자 선택 사항이며 재설치 전에 확정한다.
 
-### 에이전트 5종 — byte-identical이어야 함(변경 없음)
+### 에이전트 6종 — byte-identical이어야 함(변경 없음)
 
-실측: `$DST/.claude/agents`와 `$SRC/.claude/agents`는 diff 없음(byte-identical). 이 기대는 지금도 유효하다 — 비어 있지 않으면 **로컬이 정본보다 앞서 있다**는 뜻이므로, **덮어쓰기 전에 멈추고** 로컬 변경을 정본으로 역포팅한다.
+실측: `$DST/.claude/agents`와 `$SRC/.claude/agents`는 diff 없음(byte-identical). 이 기대는 지금도 유효하다 — 비어 있지 않으면 **로컬이 정본보다 앞서 있다**는 뜻이므로, **덮어쓰기 전에 멈추고** 로컬 변경을 정본으로 역포팅한다. 예외: 정본에만 있는 새 tier 파일(예: 2026-10-30에 추가된 `executor-opus.md`)이 `Only in $SRC…`로 나오는 것은 로컬이 앞선 것이 아니라 정본이 앞선 것이므로 멈추지 않는다.
 
 ### 훅 — 정본이 앞서 있음(과거 "byte-identical" 서술은 훅에는 더 이상 맞지 않음)
 
@@ -194,8 +196,8 @@ mv "$DST/.claude/skills/delegate-first" "$OLD"
 mv "$NEW" "$DST/.claude/skills/delegate-first"
 rm -rf "$OLD"
 
-# tier 에이전트 5종
-cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,reviewer-high,judge-max}.md "$DST/.claude/agents/"
+# tier 에이전트 6종
+cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,executor-opus,reviewer-high,judge-max}.md "$DST/.claude/agents/"
 
 # 규칙 파일 (전파 — 정본에서 고친 라우팅 규칙을 설치 프로젝트/전역에도 반영. §2 참고)
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$HOME/.claude/rules/"
@@ -212,7 +214,7 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-
    - **2026-08-18 실행 결과**: 파일 내용으로 확인 완료 — `SKILL.md`에 파라미터 표현("for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead")과 `## Idle recovery` 절(타임박스·폴링 만료 감지·재위임)이 goone-rest 로컬 사본에 반영된 것을 확인했다.
 2. **훅 차단 스모크** — `model` 없이 Agent 즉석 호출 → exit 2 차단 + 라우팅 안내 stderr 확인. (§0의 "훅 등록 위치" 확인을 먼저 통과해야 이 스모크의 결과를 해석할 수 있다.)
    - **2026-08-18 실행 결과**: 전역 훅 대상 `scripts/smoke-hook.sh` 스모크 24/24 PASS + 실제 Agent 호출로 범용 타입(`general-purpose`)을 `model` 없이 호출 → exit 2 차단(라우팅 안내 포함) 확인.
-3. **tier 에이전트 스폰** — `subagent_type: explorer-low` 1회 호출 → haiku/low 적용 확인. **B-06([../BACKLOG.md](../BACKLOG.md), 정본 레포 PR #2)이 해소되었으므로, §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 수행한 뒤에는 이 3번이 수행 가능하다.** `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 이제 등록돼 있어, `model` 없이 tier를 호출해도 통과한다. 단 §3의 훅 전파 단계를 건너뛰었거나 전역(`~/.claude/hooks/`)에 tier 5종이 없는 구 버전이 남아 있으면 여전히 exit 2로 차단된다 — 우회하려고 `model`을 넘기면 통과는 하지만 그 순간 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합이 그대로 적용됐는지"를 검증한다는 3번의 목적 자체가 성립하지 않는다. **이 3번에서 막히는 것은 재설치가 뭔가를 깨뜨린 것이 아니라 발효 중인 훅 버전 불일치다** — 오퍼레이터가 이 3번에서 막혔다고 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것. 먼저 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계를 다시 수행한다.
+3. **tier 에이전트 스폰** — `subagent_type: explorer-low` 1회 호출 → haiku/low 적용 확인. **B-06([../BACKLOG.md](../BACKLOG.md), 정본 레포 PR #2)이 해소되었으므로, §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 수행한 뒤에는 이 3번이 수행 가능하다.** `enforce-subagent-model.cjs`의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)이 이제 등록돼 있어(이후 2026-10-30에 같은 목록에 `executor-opus`가 추가돼 현재 6종), `model` 없이 tier를 호출해도 통과한다. 단 §3의 훅 전파 단계를 건너뛰었거나 전역(`~/.claude/hooks/`)에 tier 6종이 없는 구 버전이 남아 있으면 여전히 exit 2로 차단된다 — 우회하려고 `model`을 넘기면 통과는 하지만 그 순간 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합이 그대로 적용됐는지"를 검증한다는 3번의 목적 자체가 성립하지 않는다. **이 3번에서 막히는 것은 재설치가 뭔가를 깨뜨린 것이 아니라 발효 중인 훅 버전 불일치다** — 오퍼레이터가 이 3번에서 막혔다고 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것. 먼저 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계를 다시 수행한다.
    - **2026-08-18 실행 결과 — 해소됨(더 이상 B-06 제약으로 차단되지 않는다)**: 이제 실제로 수행 가능하며 실측으로 통과를 확인했다. 4단계 판정: ①음성 대조(사전) — `general-purpose`를 `model` 없이 호출 → 차단 ②양성 — `explorer-low`를 `model` 없이 호출 → 스폰 성공, transcript에 `model` 키 부재 + 실제 적용 모델 `claude-haiku-4-5-20251001`(frontmatter 핀 그대로) ③양성 2 — `executor-med`를 `model` 없이 호출 → 실제 모델 `claude-sonnet-5` + `effort: "medium"` 확인(model·effort 둘 다 frontmatter대로 적용) ④음성 대조(사후) — 다시 차단 확인. 세부는 [../BACKLOG.md](../BACKLOG.md) B-06 참조.
 
 추가 확인: `grep -rn "delegating-execution" "$DST/.claude"` → 결과 0건(구 명칭 잔존 없음).

@@ -66,7 +66,7 @@ When a subagent's output fails review, diagnose the cause before retrying:
 
 Always strengthen the prompt alongside any model upgrade — raising the model without fixing the prompt just repeats the same failure at higher cost.
 
-- Same root cause fails twice → escalate model/effort unconditionally on the retry.
+- Same root cause fails twice → escalate model/effort unconditionally on the retry (earlier when the rule file's escalation criteria ①–④ apply — see references/routing-matrix.md (c); implementation escalates to `executor-opus`).
 - Fails a 3rd time → stop delegating, report the blocker to the user.
 
 ## Idle recovery

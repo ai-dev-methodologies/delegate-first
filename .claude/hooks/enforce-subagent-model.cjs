@@ -19,7 +19,7 @@
  *     실제 가시화는 위임 로그의 effective model 기록이 맡는다. 한계: 토큰은
  *     자기 선언이라 강제가 아니라 의식적 선언 장치다(호출자가 거짓으로 적어도
  *     훅은 알 수 없다).
- *   - tool_input.model 이 있고, subagent_type 이 tier 5종(아래
+ *   - tool_input.model 이 있고, subagent_type 이 tier 6종(아래
  *     TIER_EXPECTED_MODEL) 중 하나면 그 값이 tier의 고정값과 **일치할 때만**
  *     통과시킨다 — 불일치는 exit 2 로 차단한다(B-11: 조용한 강등/승급 봉인.
  *     예: judge-max에 opus를 넘겨 최고 검증 단계를 저비용 모델로 몰래
@@ -63,11 +63,12 @@ const MODEL_PINNED_TYPES = new Set([
   "oh-my-claudecode:planner", // opus
   "statusline-setup",
 
-  // delegate-first tier 에이전트 5종 (.claude/agents/*.md frontmatter 고정값)
+  // delegate-first tier 에이전트 6종 (.claude/agents/*.md frontmatter 고정값)
   // — 값은 각 파일의 frontmatter를 직접 읽어 확인한 것이며 추측이 아니다.
   "explorer-low", // haiku/low
   "executor-med", // sonnet/medium
   "executor-high", // sonnet/high
+  "executor-opus", // opus/high
   "reviewer-high", // opus/high
   "judge-max", // fable/max
 
@@ -105,14 +106,15 @@ const MODEL_PINNED_TYPES = new Set([
   // 반드시 함께 고쳐야 한다 — 자동 동기화 수단이 없다.
 ]);
 
-// tier 5종 → 기대 model 값 (B-11). 값은 각 .claude/agents/*.md frontmatter를
-// 직접 읽어 확인한 것이며 추측이 아니다(2026-08-18 재확인, 위
-// MODEL_PINNED_TYPES 주석의 tier 5종 출처와 동일):
+// tier 6종 → 기대 model 값 (B-11). 값은 각 .claude/agents/*.md frontmatter를
+// 직접 읽어 확인한 것이며 추측이 아니다(2026-08-18 재확인, executor-opus는 2026-10-30 추가 시 확인, 위
+// MODEL_PINNED_TYPES 주석의 tier 6종 출처와 동일):
 //   explorer-low → haiku, executor-med → sonnet, executor-high → sonnet,
+//   executor-opus → opus,
 //   reviewer-high → opus, judge-max → fable.
 // oh-my-claudecode:*·statusline-setup은 이 레포 밖 정의라 기대값을 알 수
 // 없으므로 이 map의 검증 대상에서 제외한다 — MODEL_PINNED_TYPES에는 그대로
-// 남아 model 미지정 시 통과는 유지되고, 값 불일치 차단만 이 5종에 한해
+// 남아 model 미지정 시 통과는 유지되고, 값 불일치 차단만 이 6종에 한해
 // 적용된다.
 //
 // ⚠ 드리프트 주의: 이 map도 MODEL_PINNED_TYPES와 마찬가지로 정적
@@ -124,6 +126,7 @@ const TIER_EXPECTED_MODEL = {
   "explorer-low": "haiku",
   "executor-med": "sonnet",
   "executor-high": "sonnet",
+  "executor-opus": "opus",
   "reviewer-high": "opus",
   "judge-max": "fable",
 };
@@ -169,7 +172,7 @@ process.stdin.on("end", () => {
         "  fork는 세션(메인) 모델을 상속하고 model 파라미터를 무시합니다(예: model 'opus'를 넘겨도 세션 모델로 실행).",
         "  fork는 대화 맥락 자체가 입력일 때만 쓰세요. 컨텍스트 크기 우회·모델 상향 수단으로는 금지입니다.",
         "  대형 파일 레인: executor-high + 파일·함수 단위 분할 + 부분 Read/줄 예산으로 처리하세요.",
-        "  같은 레인이 2회 실패하면 model 'opus'로 상향하세요.",
+        "  상향이 필요하면(같은 레인 2회 실패 또는 규칙의 상향 기준 ①~④) subagent_type 'executor-opus'로 상향하세요.",
         "  정말 대화 맥락이 입력이라면 prompt에 한 줄로 `FORK_REASON: conversation-context` 를 넣어 다시 호출하세요.",
         "  이 차단은 ALLOW_INHERITED_SUBAGENT_MODEL / ALLOW_TIER_MODEL_OVERRIDE 로도 우회되지 않습니다.",
       ].join("\n")

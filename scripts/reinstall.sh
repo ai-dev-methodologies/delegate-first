@@ -128,7 +128,7 @@ HOOK_FILE_NAME="enforce-subagent-model.cjs"
 # Declared here (before §0's pre-checks below, which are the first thing
 # that needs it) so every later step — pre-checks, plan output, swap,
 # tier-agent copy, verification — shares one definition.
-TIER_AGENTS=(explorer-low executor-med executor-high reviewer-high judge-max)
+TIER_AGENTS=(explorer-low executor-med executor-high executor-opus reviewer-high judge-max)
 
 confirm() {
   if [ "$ASSUME_YES" -eq 1 ]; then
@@ -417,12 +417,12 @@ mv "$NEW" "$DST_SKILL_DIR"
 rm -rf "$OLD"
 log "스킬 스왑 완료: $DST_SKILL_DIR"
 
-# --- tier 에이전트 5종 ---
+# --- tier 에이전트 6종 ---
 mkdir -p "$DST/.claude/agents"
 for agent in "${TIER_AGENTS[@]}"; do
   cp "$SRC/.claude/agents/$agent.md" "$DST/.claude/agents/$agent.md"
 done
-log "tier 에이전트 5종 교체 완료"
+log "tier 에이전트 6종 교체 완료"
 
 # --- 전역 전파 (기본 비활성) ---
 if [ "$PROPAGATE_GLOBAL" -eq 1 ]; then
@@ -448,7 +448,7 @@ for agent in "${TIER_AGENTS[@]}"; do
     AGENT_MISMATCH=1
   fi
 done
-[ "$AGENT_MISMATCH" -eq 0 ] && log "OK: tier 에이전트 5종 모두 정본과 동일"
+[ "$AGENT_MISMATCH" -eq 0 ] && log "OK: tier 에이전트 6종 모두 정본과 동일"
 
 LEFTOVER_REFS="$(grep -rln "delegating-execution" "$DST/.claude" 2>/dev/null || true)"
 if [ -n "$LEFTOVER_REFS" ]; then

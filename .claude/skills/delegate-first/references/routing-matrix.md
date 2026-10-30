@@ -13,6 +13,7 @@
 | 탐색·추출 (파일 검색, grep, 단순 집계) | haiku / sonnet | low~medium | Agent 툴 | `explorer-low` |
 | 문서 편집·구조화 | sonnet | medium | Agent 툴 | `executor-med` |
 | 일반 구현 | sonnet | medium~high | Agent 툴 또는 Workflow `agent()` | `executor-med`(medium) / `executor-high`(high) |
+| 구현 상향(상향 기준 ①~④, 규칙 파일 원칙 3) | opus | high | Agent 툴 | `executor-opus` |
 | 리뷰 1차 | sonnet | medium | Agent 툴 | 정확 매치 없음 — 낮은 리스크면 `executor-med`로 첫 패스, 결과가 걸리는 리뷰면 `reviewer-high`로 상향 |
 | 적대 검증·판정 | opus / fable | high~max | Workflow `agent()` (effort 필요) 또는 Agent 툴(tier 에이전트 사용 시) | `reviewer-high`(opus) / `judge-max`(fable, 5종 트리거 해당 시) |
 | 아키텍처·법·돈·권한·보안 | fable | max | Workflow `agent()` 또는 Agent 툴(tier 에이전트 사용 시) | `judge-max` |
@@ -22,12 +23,12 @@
 
 릴리스 게이트 최종 판정은 fable(`judge-max`, 메인이 fable이면 메인)이 한다 — 1차 증거 수집은 `reviewer-high` 가능(2026-10-07 사용자 확정).
 
-tier 에이전트 정의(`.claude/agents/*.md`)는 각 5종을 [SKILL.md](../SKILL.md)의 흐름과 연결한다: `explorer-low`(haiku/low, 읽기전용) · `executor-med`(sonnet/medium) · `executor-high`(sonnet/high) · `reviewer-high`(opus/high, Write/Edit 제외) · `judge-max`(fable/max, Write/Edit 제외, SKILL.md의 fable 강제 트리거 5종 전용).
+tier 에이전트 정의(`.claude/agents/*.md`)는 각 6종을 [SKILL.md](../SKILL.md)의 흐름과 연결한다: `explorer-low`(haiku/low, 읽기전용) · `executor-med`(sonnet/medium) · `executor-high`(sonnet/high) · `executor-opus`(opus/high, 상향 기준 ①~④ 전용) · `reviewer-high`(opus/high, Write/Edit 제외) · `judge-max`(fable/max, Write/Edit 제외, SKILL.md의 fable 강제 트리거 5종 전용).
 
 ## 실행 경로 3종
 
 ### ① Agent 툴
-- 즉석 호출(`subagent_type`을 범용 에이전트로 지정)은 `model`만 지정 가능하고 effort는 지정 불가(기본값 사용).
+- 즉석 호출(`subagent_type`을 범용 에이전트로 지정)은 `model`만 지정 가능하고 effort는 지정 불가(기본값 사용). (2026-10-30: Agent 도구 스키마에 `effort` 인자가 생겼으나 무명 스폰에서 적용되는지는 미실측 — 규칙 파일 마지막 절 참조.)
 - **tier 에이전트를 `subagent_type`으로 지정하면 예외다** — `.claude/agents/*.md` frontmatter에 `model`+`effort`가 이미 박혀 있어, Agent 툴 호출만으로 그 조합이 그대로 적용된다(예: `subagent_type: judge-max` → fable/max). effort가 필요한 작업은 우선 tier 에이전트가 있는지부터 확인한다. **전제**: 이 예외는 훅(`enforce-subagent-model.cjs`)의 `MODEL_PINNED_TYPES`에 그 tier 에이전트가 실제로 등록돼 있을 때만 성립한다 — 등록돼 있지 않으면 `model` 없는 호출은 exit 2로 차단되고, 우회로 `model`을 넘기면 호출 파라미터가 frontmatter의 `model`을 덮어써(`effort`·`tools`·`disallowedTools`는 유지) "pinned 조합 그대로"가 깨진다.
 - 범용 위임 — 탐색·구현·리뷰 1차 대부분은 이 경로로 충분하다.
 - 핀 누락으로 차단되면 폴백은 훅 stderr의 일반 안내가 아니라 **그 tier의 frontmatter model 값(위 표/문단의 값)을 그대로 명시**하는 것이다. 다른 값을 넘기면(B-11) 그 tier의 고정값과 정확히 일치하지 않는 한 훅이 exit 2로 **차단**한다 — 더 이상 조용한 강등이 아니다. 의도적 override는 사람 전용 break-glass `ALLOW_TIER_MODEL_OVERRIDE=1`이 필요하다.
@@ -38,7 +39,7 @@ tier 에이전트 정의(`.claude/agents/*.md`)는 각 5종을 [SKILL.md](../SKI
 ### fork와 컨텍스트 크기
 - (a) fork는 **대화 맥락 자체가 입력일 때만** 쓴다. 컨텍스트 크기 우회나 모델 상향 수단으로는 금지 — fork는 세션 모델로 돌고 `model` override는 무시된다("always runs on your model — a `model` override is ignored", 2026-10-06 세션 Agent 툴 설명). 훅은 prompt에 `FORK_REASON: conversation-context` 한 줄이 없으면 exit 2로 차단한다. 통과 시 훅이 stderr에 쓰는 "effective model = 세션 모델"은 exit 0의 stderr라 debug log에만 가고 Claude는 보지 못한다("Stderr from a hook that exits 0 goes to the debug log only, never the transcript, and Claude never sees it" — https://code.claude.com/docs/en/hooks, 확인 2026-10-06) — 그래서 위임 로그 model 칸에 effective model을 직접 적는다.
 - (b) 대형 파일 레인 = `executor-high` + 파일 1개·함수 단위 분할 + 부분 Read·줄 예산 명시 ([prompt-templates.md](prompt-templates.md) Template 3).
-- (c) 같은 레인이 같은 원인으로 2회 실패하면 opus로 상향한다(프롬프트 강화 동반, [SKILL.md](../SKILL.md) 에스컬레이션 사다리). opus 쓰기 tier가 없으므로 Workflow `agent()`(opus, effort 지정)를 쓴다. Workflow `agent()`를 쓸 수 없으면 사용자에게 보고한다(effort 미고정 즉석 호출로 대신하지 않는다).
+- (c) 같은 레인이 같은 원인으로 2회 실패하면 opus로 상향한다(프롬프트 강화 동반, [SKILL.md](../SKILL.md) 에스컬레이션 사다리). 상향 대상은 opus 쓰기 tier `executor-opus`(opus/high)다(effort 미고정 즉석 호출로 대신하지 않는다). 규칙 파일(`~/.claude/rules/subagent-model-routing.md`) 원칙 3 「상향 경로」 기준 ①~④는 이보다 이르게(예: ② 1회 실패 뒤 재수정) 상향한다 — 둘이 겹치면 규칙 파일 기준을 따른다.
 - (d) 서브에이전트 model 제약 (모두 확인일 2026-10-06):
   - Agent 툴 호출 `model` 파라미터 허용값은 별칭 4종 `haiku`·`sonnet`·`opus`·`fable`(툴 스키마 enum).
   - frontmatter `model`: "`sonnet`, `opus`, `haiku`, `fable`, a full model ID such as `claude-opus-5-5`, or `inherit`" — https://code.claude.com/docs/en/sub-agents#supported-frontmatter-fields . Full model ID는 "Accepts the same values as the `--model` flag" — https://code.claude.com/docs/en/sub-agents#choose-a-model
@@ -72,6 +73,6 @@ tier 에이전트 정의(`.claude/agents/*.md`)는 각 5종을 [SKILL.md](../SKI
 
 위 표·tier 에이전트 어느 쪽에도 정확히 맞지 않는 작업이 나오면:
 
-1. **티어 밖 조합** — Workflow `agent()`로 모델·effort를 직접 지정하는 범용 폴백을 쓴다. 5개 tier 에이전트에 없는 모델·effort 조합을 억지로 끼워 맞추지 않는다.
+1. **티어 밖 조합** — Workflow `agent()`로 모델·effort를 직접 지정하는 범용 폴백을 쓴다. 6개 tier 에이전트에 없는 모델·effort 조합을 억지로 끼워 맞추지 않는다.
 2. **완전히 새로운 유형** — 오류 비용(틀렸을 때 되돌리는 비용) × 탐색 공간(고려할 변수 수)으로 즉석 판정한다. 애매하면 **반올림은 위로**(더 비싼 쪽으로) 한다. 판정 직후 이 표에 행을 수기로 즉시 추가한다 — 다음에 같은 유형이 나오면 재판정하지 않는다.
 3. **불확실하고 고위험** — SKILL.md의 fable 강제 트리거 5종에 해당하는지 먼저 확인해 승격하거나, 그래도 애매하면 사용자에게 직접 묻는다. 추측으로 낮은 티어에 배정하지 않는다.

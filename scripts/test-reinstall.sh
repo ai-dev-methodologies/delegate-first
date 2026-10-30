@@ -206,7 +206,7 @@ build_basic_dst() {
 }
 
 # build_fixture_src <src-root> — a minimal but complete canonical repo
-# fixture (SKILL.md + references/ + 5 tier agent files, all reinstall.sh's
+# fixture (SKILL.md + references/ + 6 tier agent files, all reinstall.sh's
 # §0 pre-checks require) that additionally carries a new top-level file
 # (CHANGELOG.md) the real $REPO_ROOT does not currently have. Used to prove
 # the generalized $NEW-construction step (scripts/reinstall.sh) picks up
@@ -220,7 +220,7 @@ build_fixture_src() {
   echo "canonical ref" > "$src/.claude/skills/delegate-first/references/prompt-templates.md"
   echo "$FIXTURE_CANONICAL_CHANGELOG" > "$src/.claude/skills/delegate-first/CHANGELOG.md"
   local agent
-  for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+  for agent in explorer-low executor-med executor-high executor-opus reviewer-high judge-max; do
     echo "model: sonnet" > "$src/.claude/agents/$agent.md"
   done
 }
@@ -260,7 +260,7 @@ echo
   [ -f "$d/dst/.claude/skills/delegate-first/.local-only" ] || { ok=0; detail="dotfile not preserved"; }
   [ -L "$d/dst/.claude/skills/delegate-first/HANDOFF-link.md" ] || { ok=0; detail="symlink not preserved"; }
   [ -f "$d/dst/.claude/skills/delegate-first/notes dir/파일 이름.md" ] || { ok=0; detail="space/한글 subdir not preserved"; }
-  for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+  for agent in explorer-low executor-med executor-high executor-opus reviewer-high judge-max; do
     diff -q "$d/dst/.claude/agents/$agent.md" "$REPO_ROOT/.claude/agents/$agent.md" >/dev/null 2>&1 || { ok=0; detail="agent $agent not canonical"; }
   done
   if [ "$ok" -eq 1 ]; then record "case1_normal_reinstall" PASS; else record "case1_normal_reinstall" FAIL "$detail"; fi
@@ -423,9 +423,9 @@ echo
 
 # --- Case 15 (C-1): --src == --dst is refused before any destructive step.
 # Uses build_fixture_src (not build_basic_dst) for the shared directory —
-# it plants all 5 tier agent files, so §0's pre-checks (which require SRC
-# to have all 5) would otherwise PASS and let the script proceed to a
-# self-referential swap. build_basic_dst only has 1/5 tier files, which
+# it plants all 6 tier agent files, so §0's pre-checks (which require SRC
+# to have all 6) would otherwise PASS and let the script proceed to a
+# self-referential swap. build_basic_dst only has 1/6 tier files, which
 # would make §0 reject this case for an unrelated reason (missing tier
 # agents in SRC) and the C-1 guard would never actually be exercised. ---
 {
@@ -507,7 +507,7 @@ echo
   [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc out=$out"; }
   diff -q "$d/dst/.claude/skills/delegate-first/SKILL.md" "$REPO_ROOT/.claude/skills/delegate-first/SKILL.md" >/dev/null 2>&1 || { ok=0; detail="SKILL.md not canonical"; }
   diff -q "$d/dst/.claude/skills/delegate-first/references/prompt-templates.md" "$REPO_ROOT/.claude/skills/delegate-first/references/prompt-templates.md" >/dev/null 2>&1 || { ok=0; detail="references not canonical"; }
-  for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+  for agent in explorer-low executor-med executor-high executor-opus reviewer-high judge-max; do
     diff -q "$d/dst/.claude/agents/$agent.md" "$REPO_ROOT/.claude/agents/$agent.md" >/dev/null 2>&1 || { ok=0; detail="agent $agent not canonical"; }
   done
   if [ "$ok" -eq 1 ]; then record "case20_fresh_install_no_claude_dir" PASS; else record "case20_fresh_install_no_claude_dir" FAIL "$detail"; fi
@@ -527,7 +527,7 @@ echo
   ok=1
   [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc out=$out"; }
   diff -q "$d/dst/.claude/skills/delegate-first/SKILL.md" "$REPO_ROOT/.claude/skills/delegate-first/SKILL.md" >/dev/null 2>&1 || { ok=0; detail="SKILL.md not canonical"; }
-  for agent in explorer-low executor-med executor-high reviewer-high judge-max; do
+  for agent in explorer-low executor-med executor-high executor-opus reviewer-high judge-max; do
     diff -q "$d/dst/.claude/agents/$agent.md" "$REPO_ROOT/.claude/agents/$agent.md" >/dev/null 2>&1 || { ok=0; detail="agent $agent not canonical"; }
   done
   if [ "$ok" -eq 1 ]; then record "case21_claude_dir_without_skills_or_agents" PASS; else record "case21_claude_dir_without_skills_or_agents" FAIL "$detail"; fi
