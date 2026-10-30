@@ -3,7 +3,7 @@
   "hooks": [
     {
       "type": "command",
-      "command": "f=\"${CLAUDE_PROJECT_DIR:-}/.claude/skills/delegate-first/hooks/resume-backstop.cjs\"; [ -f \"$f\" ] || f=\"${HOME:-}/.claude/skills/delegate-first/hooks/resume-backstop.cjs\"; [ -f \"$f\" ] || exit 0; command -v node >/dev/null 2>&1 || { echo \"[delegate-first] resume 백스톱: node를 찾지 못해 검사를 건너뛴다.\" >&2; exit 0; }; node \"$f\" && rc=0 || rc=$?; [ \"$rc\" -eq 0 ] || [ \"$rc\" -eq 2 ] || { echo \"[delegate-first] resume 백스톱이 예상 밖 종료 코드 ${rc}로 끝났다. Agent 호출을 막는다(fail-closed).\" >&2; exit 2; }; exit \"$rc\""
+      "command": "f=\"$HOME/.claude/skills/delegate-first/hooks/resume-backstop.sh\"; [ -f \"$f\" ] || exit 0; bash \"$f\""
     }
   ]
 }

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
 # scripts/test-resume-backstop.sh — resume 백스톱 훅(resume-backstop.cjs)과
-# 그 전역 등록 항목(resume-backstop.settings.json)의 회귀망.
+# 그 래퍼(resume-backstop.sh), 전역 등록 항목(resume-backstop.settings.json)의 회귀망.
 #
 # 백스톱은 SKILL.md frontmatter 훅이 resume 뒤 꺼지는 결함을 메운다. 전사에
 # delegate-first 호출 기록이 있을 때만 enforce-subagent-model.cjs를 실행하고,
 # 기록이 없으면 통과시킨다. 이 스위트는 그 판정(기록 인정·오탐 거부), 종료
 # 코드 전달, 경로 해석, 등록 command의 exit 0 경계, 큰 전사 성능을 본다.
+# 전역 등록은 모든 세션에서 돌므로 프로젝트 경로의 파일(미끼)을 실행하지 않는지도 본다.
 #
 # 부작용: 없음. 모든 케이스는 mktemp -d 샌드박스의 가짜 HOME·프로젝트·전사를
 # 쓴다. 실제 $HOME/.claude는 읽지도 쓰지도 않는다. 샌드박스는 종료 시 지운다.
@@ -21,6 +22,7 @@ HOOK_DIR="$REPO_ROOT/.claude/skills/delegate-first/hooks"
 BACKSTOP="$HOOK_DIR/resume-backstop.cjs"
 ENFORCE="$HOOK_DIR/enforce-subagent-model.cjs"
 ENTRY="$HOOK_DIR/resume-backstop.settings.json"
+WRAPPER="$HOOK_DIR/resume-backstop.sh"
 NODE_BIN="$(command -v node)"
 
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/test-resume-backstop.XXXXXX")"
@@ -64,6 +66,8 @@ REC_ASSISTANT_TEXT='{"type":"assistant","message":{"role":"assistant","content":
 REC_OTHER_CMD='{"type":"user","message":{"role":"user","content":"<command-message>x</command-message>\n<command-name>/delegate-firstx</command-name>"},"uuid":"u11"}'
 REC_OTHER_SKILL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Skill","input":{"skill":"delegate-first-extra"}}]},"uuid":"a5"}'
 REC_CWD='{"type":"user","cwd":"/x/workspace/delegate-first","message":{"role":"user","content":"hello"},"uuid":"u12"}'
+REC_ARGS_TAG='{"type":"user","message":{"role":"user","content":"<command-message>foo</command-message>\n<command-name>/foo</command-name>\n<command-args>see <command-name>/delegate-first</command-name></command-args>"},"uuid":"u13"}'
+REC_ARRAY_SECOND='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"<command-name>/foo</command-name>"},{"type":"text","text":"<command-name>/delegate-first</command-name>"}]},"uuid":"u14"}'
 REC_BROKEN='{"type":"user","message":{"content":"<command-name>/delegate-first</command-name>"'
 
 # transcript <파일> <레코드...> — 레코드를 한 줄씩 적는다
@@ -122,6 +126,11 @@ transcript "$T/cs.jsonl" "$REC_COMPACT_SUMMARY"
 expect "compact 요약 안 인용만 → 0" 0 "$T/cs.jsonl" "$IN_NO_EFFORT"
 transcript "$T/misc.jsonl" "$REC_BLOB" "$REC_ASSISTANT_TEXT" "$REC_OTHER_CMD" "$REC_OTHER_SKILL" "$REC_BROKEN"
 expect "api-request-blob·assistant 텍스트·다른 명령·다른 스킬·깨진 줄만 → 0" 0 "$T/misc.jsonl" "$IN_NO_EFFORT"
+# 첫 <command-name> 값만 본다: 다른 명령의 args·뒤 블록에 든 태그는 기록이 아니다
+transcript "$T/args-tag.jsonl" "$REC_ARGS_TAG"
+expect "다른 명령의 args 안 <command-name> 태그 → 0" 0 "$T/args-tag.jsonl" "$IN_NO_EFFORT"
+transcript "$T/array-second.jsonl" "$REC_ARRAY_SECOND"
+expect "첫 text 블록이 다른 명령, 둘째 블록에 태그 → 0" 0 "$T/array-second.jsonl" "$IN_NO_EFFORT"
 
 # --- 전사를 읽지 못함 → 0과 경고 한 줄 ---
 expect "transcript 파일 없음 → 0" 0 "$T/missing.jsonl" "$IN_NO_EFFORT"
@@ -139,6 +148,26 @@ expect "프로젝트 사본 없음 → \$HOME 사본으로 차단 2" 2 "$T/cmd.j
 expect "CLAUDE_PROJECT_DIR 빈 값 → \$HOME 사본으로 차단 2" 2 "$T/cmd.jsonl" "$IN_NO_EFFORT" "$SKILL_HOME" ""
 expect "기록 있음 + 스크립트 없음(프로젝트·HOME) → 2" 2 "$T/cmd.jsonl" "$IN_PIN_OK" "$EMPTY_HOME" "$SANDBOX/proj-empty"
 expect "기록 없음 + 스크립트 없음 → 0" 0 "$T/none.jsonl" "$IN_NO_EFFORT" "$EMPTY_HOME" "$SANDBOX/proj-empty"
+
+# --- 두 사본이 있으면 $HOME 사본을 실행하고, 해시가 다르면 경고한다 ---
+MARK_ENF="$SANDBOX/ENFORCE_PWNED"
+PROJ_ODD="$SANDBOX/proj-odd"
+mkdir -p "$PROJ_ODD/.claude/skills/delegate-first/hooks"
+printf '%s\n' "require('fs').writeFileSync('$MARK_ENF', 'x'); process.exit(0);" \
+  > "$PROJ_ODD/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"
+run_backstop "{\"transcript_path\":\"$T/cmd.jsonl\",$IN_NO_EFFORT}" "$SKILL_HOME" "$PROJ_ODD"
+if [ "$RC" = 2 ] && [ ! -e "$MARK_ENF" ] && printf '%s' "$ERR" | grep -q "sha256"; then
+  record "두 사본 해시 불일치 → \$HOME 사본으로 차단 2, 프로젝트 사본 미실행, 경고" PASS
+else
+  record "두 사본 해시 불일치 → \$HOME 사본으로 차단 2, 프로젝트 사본 미실행, 경고" FAIL "rc=$RC mark=$([ -e "$MARK_ENF" ] && echo 생김 || echo 없음) err=[$ERR]"
+fi
+rm -f "$MARK_ENF"
+run_backstop "{\"transcript_path\":\"$T/cmd.jsonl\",$IN_PIN_OK}" "$SKILL_HOME" "$PROJ"
+if [ "$RC" = 0 ] && [ -z "$ERR" ]; then
+  record "두 사본 해시 일치 → 경고 없음" PASS
+else
+  record "두 사본 해시 일치 → 경고 없음" FAIL "rc=$RC err=[$ERR]"
+fi
 
 # --- 종료 코드 전달: stub enforce가 rc를 돌려주고 받은 stdin을 적는다 ---
 for code in 0 2 1 127 3; do
@@ -194,30 +223,94 @@ case "$CMD" in
   *) record "등록 command에 enforce-subagent-model 없음(reinstall.sh 옛 등록 탐지와 겹침 방지)" PASS ;;
 esac
 
+case "$CMD" in
+  *CLAUDE_PROJECT_DIR*) record "등록 command에 CLAUDE_PROJECT_DIR 없음(프로젝트 경로 실행 금지)" FAIL "command=[$CMD]" ;;
+  *) record "등록 command에 CLAUDE_PROJECT_DIR 없음(프로젝트 경로 실행 금지)" PASS ;;
+esac
+case "$CMD" in
+  *'$HOME/.claude/skills/delegate-first/hooks/resume-backstop.sh'*'bash "$f"'*) record "등록 command는 \$HOME 래퍼를 bash로 실행" PASS ;;
+  *) record "등록 command는 \$HOME 래퍼를 bash로 실행" FAIL "command=[$CMD]" ;;
+esac
+if [ -f "$WRAPPER" ] && ! grep -v '^[[:space:]]*#' "$WRAPPER" | grep -q CLAUDE_PROJECT_DIR; then
+  record "래퍼 코드에 CLAUDE_PROJECT_DIR 없음" PASS
+else
+  record "래퍼 코드에 CLAUDE_PROJECT_DIR 없음" FAIL "$WRAPPER 가 없거나 주석 밖에서 CLAUDE_PROJECT_DIR를 쓴다"
+fi
+
 # run_cmd <PATH> <HOME> <PROJECT> <stdin> — 등록 command를 /bin/sh로 실행한다
+# PATH의 bash는 /bin/bash(macOS 3.2)다. node 디렉터리에는 bash가 없다.
 run_cmd() {
   ERR="$(printf '%s' "$4" | env -i PATH="$1" HOME="$2" CLAUDE_PROJECT_DIR="$3" /bin/sh -c "$CMD" 2>&1 >/dev/null)"
   RC=$?
 }
 NODE_PATH_DIR="$(dirname "$NODE_BIN"):/usr/bin:/bin"
+# home_with <디렉터리> <파일...> — 가짜 HOME의 스킬 hooks 디렉터리에 파일을 둔다
+home_with() {
+  h="$1"; shift
+  mkdir -p "$h/.claude/skills/delegate-first/hooks"
+  [ "$#" -eq 0 ] || cp "$@" "$h/.claude/skills/delegate-first/hooks/"
+}
 INSTALLED_HOME="$SANDBOX/home-installed"
-mkdir -p "$INSTALLED_HOME/.claude/skills/delegate-first/hooks"
-cp "$BACKSTOP" "$ENFORCE" "$INSTALLED_HOME/.claude/skills/delegate-first/hooks/"
+home_with "$INSTALLED_HOME" "$BACKSTOP" "$ENFORCE" "$WRAPPER"
 HIT="{\"transcript_path\":\"$T/cmd.jsonl\",$IN_NO_EFFORT}"
+MISS="{\"transcript_path\":\"$T/none.jsonl\",$IN_NO_EFFORT}"
 
 run_cmd "$NODE_PATH_DIR" "$EMPTY_HOME" "$SANDBOX/proj-empty" "$HIT"
 if [ "$RC" = 0 ] && [ -z "$ERR" ]; then record "command: 스킬 미설치 → 0(조용히)" PASS; else record "command: 스킬 미설치 → 0(조용히)" FAIL "rc=$RC err=[$ERR]"; fi
+NOWRAP_HOME="$SANDBOX/home-nowrap"
+home_with "$NOWRAP_HOME" "$BACKSTOP" "$ENFORCE"
+run_cmd "$NODE_PATH_DIR" "$NOWRAP_HOME" "$SANDBOX/proj-empty" "$HIT"
+if [ "$RC" = 0 ] && [ -z "$ERR" ]; then record "command: 래퍼 없음(cjs만 있음) → 0(조용히)" PASS; else record "command: 래퍼 없음(cjs만 있음) → 0(조용히)" FAIL "rc=$RC err=[$ERR]"; fi
+WRAPONLY_HOME="$SANDBOX/home-wraponly"
+home_with "$WRAPONLY_HOME" "$WRAPPER"
+run_cmd "$NODE_PATH_DIR" "$WRAPONLY_HOME" "$SANDBOX/proj-empty" "$HIT"
+if [ "$RC" = 0 ] && [ -z "$ERR" ]; then record "command: 래퍼만 있고 cjs 없음 → 0(조용히)" PASS; else record "command: 래퍼만 있고 cjs 없음 → 0(조용히)" FAIL "rc=$RC err=[$ERR]"; fi
 run_cmd "/usr/bin:/bin" "$INSTALLED_HOME" "$SANDBOX/proj-empty" "$HIT"
 if [ "$RC" = 0 ] && [ -n "$ERR" ]; then record "command: node 없음 → 0과 경고" PASS; else record "command: node 없음 → 0과 경고" FAIL "rc=$RC err=[$ERR]"; fi
 run_cmd "$NODE_PATH_DIR" "$INSTALLED_HOME" "$SANDBOX/proj-empty" "$HIT"
 if [ "$RC" = 2 ]; then record "command: \$HOME 설치 + 기록 + effort 누락 → 2" PASS; else record "command: \$HOME 설치 + 기록 + effort 누락 → 2" FAIL "rc=$RC err=[$ERR]"; fi
-run_cmd "$NODE_PATH_DIR" "$INSTALLED_HOME" "$SANDBOX/proj-empty" "{\"transcript_path\":\"$T/none.jsonl\",$IN_NO_EFFORT}"
+run_cmd "$NODE_PATH_DIR" "$INSTALLED_HOME" "$SANDBOX/proj-empty" "$MISS"
 if [ "$RC" = 0 ]; then record "command: \$HOME 설치 + 기록 없음 → 0" PASS; else record "command: \$HOME 설치 + 기록 없음 → 0" FAIL "rc=$RC err=[$ERR]"; fi
-CRASH="$SANDBOX/proj-crash"
-mkdir -p "$CRASH/.claude/skills/delegate-first/hooks"
-echo 'process.exit(1);' > "$CRASH/.claude/skills/delegate-first/hooks/resume-backstop.cjs"
-run_cmd "$NODE_PATH_DIR" "$EMPTY_HOME" "$CRASH" "$HIT"
-if [ "$RC" = 2 ] && [ -n "$ERR" ]; then record "command: 백스톱 예상 밖 종료(1) → 2" PASS; else record "command: 백스톱 예상 밖 종료(1) → 2" FAIL "rc=$RC err=[$ERR]"; fi
+
+# 예상 밖 종료: 백스톱 cjs가 1로 끝나거나 enforce가 1로 끝나면 2(fail-closed)
+CRASH_HOME="$SANDBOX/home-crash"
+home_with "$CRASH_HOME" "$WRAPPER"
+echo 'process.exit(1);' > "$CRASH_HOME/.claude/skills/delegate-first/hooks/resume-backstop.cjs"
+run_cmd "$NODE_PATH_DIR" "$CRASH_HOME" "$SANDBOX/proj-empty" "$HIT"
+if [ "$RC" = 2 ] && [ -n "$ERR" ]; then record "command: 백스톱 예상 밖 종료(1) → 2와 경고" PASS; else record "command: 백스톱 예상 밖 종료(1) → 2와 경고" FAIL "rc=$RC err=[$ERR]"; fi
+ENF_CRASH_HOME="$SANDBOX/home-enforce-crash"
+home_with "$ENF_CRASH_HOME" "$WRAPPER" "$BACKSTOP"
+echo 'process.exit(1);' > "$ENF_CRASH_HOME/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"
+run_cmd "$NODE_PATH_DIR" "$ENF_CRASH_HOME" "$SANDBOX/proj-empty" "$HIT"
+if [ "$RC" = 2 ] && [ -n "$ERR" ]; then record "command: enforce 예상 밖 종료(1) → 2와 경고" PASS; else record "command: enforce 예상 밖 종료(1) → 2와 경고" FAIL "rc=$RC err=[$ERR]"; fi
+
+# 미끼: 프로젝트 경로의 백스톱·래퍼·enforce는 기록 유무와 무관하게 실행되지 않는다
+MARK="$SANDBOX/PWNED"
+DECOY="$SANDBOX/proj-decoy"
+mkdir -p "$DECOY/.claude/skills/delegate-first/hooks"
+for name in resume-backstop.cjs enforce-subagent-model.cjs; do
+  printf '%s\n' "require('fs').writeFileSync('$MARK', '$name'); process.exit(0);" > "$DECOY/.claude/skills/delegate-first/hooks/$name"
+done
+printf '%s\n' "echo resume-backstop.sh > '$MARK'; exit 0" > "$DECOY/.claude/skills/delegate-first/hooks/resume-backstop.sh"
+for home_kind in empty installed; do
+  h="$EMPTY_HOME"; [ "$home_kind" = installed ] && h="$INSTALLED_HOME"
+  for rec in hit miss; do
+    input="$MISS"; want=0
+    if [ "$rec" = hit ]; then input="$HIT"; [ "$home_kind" = installed ] && want=2; fi
+    rm -f "$MARK"
+    run_cmd "$NODE_PATH_DIR" "$h" "$DECOY" "$input"
+    name="command: 미끼 프로젝트(HOME $home_kind, 기록 $rec) → $want, 미끼 미실행"
+    if [ "$RC" = "$want" ] && [ ! -e "$MARK" ]; then record "$name" PASS; else record "$name" FAIL "rc=$RC mark=[$(cat "$MARK" 2>/dev/null)] err=[$ERR]"; fi
+  done
+done
+
+# 래퍼 직접 실행: bash 3.2·set -eu 셸 옵션·HOME 미설정에서도 0이다
+if [ -f "$WRAPPER" ]; then
+  out="$(env -i PATH="$NODE_PATH_DIR" /bin/bash -eu "$WRAPPER" < /dev/null 2>&1)"; rc=$?
+  if [ "$rc" = 0 ] && [ -z "$out" ]; then record "래퍼: HOME 미설정(/bin/bash -eu) → 0(조용히)" PASS; else record "래퍼: HOME 미설정(/bin/bash -eu) → 0(조용히)" FAIL "rc=$rc out=[$out]"; fi
+else
+  record "래퍼: HOME 미설정(/bin/bash -eu) → 0(조용히)" FAIL "$WRAPPER 없음"
+fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if [ "$FAIL_COUNT" -eq 0 ]; then

@@ -743,7 +743,7 @@ f3_shape_case caseF3_empty_block_hooks_warns '---\nname: x\nhooks:\n---\nbody\n'
       "$REPO_ROOT/.claude/skills/delegate-first/hooks/resume-backstop.settings.json" "$d/home/.claude/settings.json"
     out="$(PATH="$path_for_run" run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
     rc=$?
-    if [ "$rc" -eq 0 ] && grep -qF resume-backstop.cjs "$d/home/.claude/settings.json" && ! echo "$out" | grep -qF "옛 settings 훅 등록"; then
+    if [ "$rc" -eq 0 ] && grep -qF resume-backstop.sh "$d/home/.claude/settings.json" && ! echo "$out" | grep -qF "옛 settings 훅 등록"; then
       record "caseOldReg_backstop_entry_silent[$mode]" PASS
     else
       record "caseOldReg_backstop_entry_silent[$mode]" FAIL "warned for the resume backstop entry (rc=$rc out=[$out])"

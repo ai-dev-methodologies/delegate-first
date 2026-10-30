@@ -47,8 +47,11 @@
  *     Claude가 스스로 설정하지 않는다.
  *   - 이름(name)은 보지 않는다. 이름 규약 검사(B-18)는 결정 D8로 훅에서 빠져
  *     close-task.sh의 사후 검사로 옮겼다.
- *   - 등록: 이 훅은 settings.json이 아니라 delegate-first SKILL.md frontmatter
- *     `hooks`로 켜진다 — 스킬을 호출한 세션의 Agent 호출에서만 실행된다.
+ *   - 등록: 이 훅을 직접 등록하는 곳은 delegate-first SKILL.md frontmatter
+ *     `hooks` 하나다. 스킬을 호출한 세션의 Agent 호출에서 실행된다.
+ *     전역 settings.json의 resume 백스톱(resume-backstop.cjs)도 이 스크립트를
+ *     실행한다. 전사에 스킬 호출 기록이 있는 세션에서만 실행하고, resume 뒤
+ *     frontmatter 훅이 꺼지는 틈을 메운다.
  *
  * 공급망 서약 (README.md "훅 공급망 고지"와 동일 계약, 범위 .claude/skills/delegate-first/hooks/*.cjs):
  *   이 훅은 레포에 커밋되어 배포되고, 헤드리스(-p/SDK) 세션에서는 workspace
