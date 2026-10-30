@@ -112,4 +112,4 @@
 | 2026-10-30 | executor-max | [v2-11resume-opus-high] resume 백스톱 구현·전역 등록·실측 | opus | high | Agent(tier) | `resume-backstop.cjs`와 전역 settings 등록, test-resume-backstop 37/37, 실측 R1~R5와 대화형 1회 기대대로. 전사 opus·high 일치 |
 | 2026-10-30 | reviewer-high | [v2-11rr-opus-high] resume 백스톱 적대 리뷰 | opus | high | Agent(tier) | Bash 한 번에서 정체해 중단했다. 판정 없음 |
 | 2026-10-30 | reviewer-high | [v2-11rr2-opus-high] resume 백스톱 적대 리뷰 재시도 | opus | high | Agent(tier) | H1: 전역 command가 프로젝트 경로 JS를 실행한다(`/tmp/rr2/PWNED` 재현). L3: 명령 태그 오탐·enforce 주석·문서 |
-| 2026-10-30 | executor-max | [v2-11fix-opus-high] 백스톱 H1·L3 수정과 전역 command 교체 | opus | high | Agent(tier) | `$HOME` 래퍼 `resume-backstop.sh`, test-resume-backstop 52/52(수정 전 12 FAIL), 실측 F1~F4는 전역 교체 뒤 (리뷰 대기) |
+| 2026-10-30 | executor-max | [v2-11fix-opus-high] 백스톱 H1·L3 수정과 전역 command 교체 | opus | high | Agent(tier) | `$HOME` 래퍼 `resume-backstop.sh`, test-resume-backstop 52/52(수정 전 12 FAIL), 전역 settings command 교체(백업 dfv2-resume-fix-20261030-233712). 실측 F1·F4 차단, F2·F3 통과, 미끼 표식 없음 |
