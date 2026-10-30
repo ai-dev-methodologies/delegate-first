@@ -108,3 +108,5 @@
 | 2026-10-30 | executor-med | [v2-9sync-sonnet-medium] 전역 스킬 재동기화 | sonnet | medium | Agent(tier) | reinstall --dst $HOME --propagate-global. diff 동일, settings.json 불변. 전사 sonnet·medium 일치 |
 | 2026-10-30 | reviewer-high | [v2-9rr2-opus-high] 7e98822 확인 리뷰 | opus | high | Agent(tier) | H0, M1·L3은 B-19 한계로 넘겼다(반복 중단). 전사 opus·high 일치 |
 | 2026-10-30 | executor-med | [v2-9b19-sonnet-medium] B-19 남은 한계 기록과 위임 로그 갱신 | sonnet | medium | Agent(tier) | B-19 한계 4항목 기록 |
+| 2026-10-30 | reviewer-high | [v2-10probe-opus-high] 스킬 훅의 compact·resume 유지 실측 | opus | high | Agent(tier) | 결함 H 발견: frontmatter 훅이 compact 뒤에는 유지되고 resume 뒤에는 꺼진다(A2·A3·B3). 재호출하면 다시 켜진다(B4). 전사 opus·high 일치 |
+| 2026-10-30 | executor-max | [v2-11resume-opus-high] resume 백스톱 구현·전역 등록·실측 | opus | high | Agent(tier) | `resume-backstop.cjs`와 전역 settings 등록, test-resume-backstop 37/37, 실측 R1~R5와 대화형 1회 기대대로. 전사 opus·high 일치 |

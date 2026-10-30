@@ -32,6 +32,8 @@ The main session's model and reasoning-effort *setting* are the user's call (ses
 
 Delegated effort is a separate matter, decided by [references/routing-matrix.md](references/routing-matrix.md) — not by this section. The execution path determines whether effort can even be specified: Workflow `agent()`'s `effort` param, `codex exec`'s `model_reasoning_effort`, or the Agent tool's `effort` param, which every Agent call must state (the hook blocks a missing `effort` with exit 2; a tier agent takes its frontmatter pin value) — see routing-matrix.md for details.
 
+Hook scope: the frontmatter `hooks` above turn on when this skill is invoked. They stay on after `/compact` in the same process but turn off after `claude --resume`. The resume backstop (`hooks/resume-backstop.cjs`) covers that gap. It is registered once in the global `~/.claude/settings.json` (entry: `hooks/resume-backstop.settings.json`; procedure: the canonical repo's `docs/REINSTALL.md` §7). It runs the same check only in sessions whose transcript records a `/delegate-first` invocation, so sessions that never invoked the skill stay unenforced.
+
 ## Flow checklist
 
 Copy this into your response and check off as you go:

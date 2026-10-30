@@ -35,6 +35,7 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 | 로컬 사본 존재 | `ls <대상>/.claude/skills/delegate-first` | SKILL.md, references/, HANDOFF.md, NEW-REPO-PROMPT.md |
 | 훅 위치 | `ls "$DST/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"` | 재설치 뒤 존재(스킬 디렉터리 안). 재설치 전에는 없을 수 있다 |
 | 훅 등록 위치 | `grep -n "enforce-subagent-model" ~/.claude/settings.json "$DST/.claude/settings.json" 2>/dev/null` | 출력 0건. 등록은 설치된 `SKILL.md` frontmatter `hooks`가 맡고, 훅은 스킬을 호출한 세션에서만 켜진다. 옛 등록이 남아 있으면 스킬 호출 세션에서 훅이 이중 실행되므로 그 등록을 지운다(`scripts/reinstall.sh`도 경고한다). 이 표의 판정이 §4-2번의 전제다. |
+| resume 백스톱 등록 | `grep -c "resume-backstop.cjs" ~/.claude/settings.json` | 1. 0이면 §7로 등록한다. frontmatter 훅은 `claude --resume` 뒤에 꺼지므로 재개 세션은 이 전역 등록이 지킨다. |
 | 동명 에이전트 model 핀 확인 | `grep -L '^model:' "$DST"/.claude/agents/{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md` | 출력 0건(모두 model 핀 보유). 핀이 없는 동명 에이전트가 있으면 훅의 tier 기대값(model·effort) 검사와 어긋나 그 이름의 정상 호출이 exit 2로 막히거나, 정의 핀과 훅 기대값이 갈라진다. 훅은 생략 호출을 통과시키지 않으므로 상속 구멍은 생기지 않는다. |
 
 ## 1. 백업 (건너뛰기 금지)
@@ -242,3 +243,23 @@ git -C <정본레포> checkout main   # 되돌리기
 - 이 재설치가 끝난 시점부터 **정본은 이 레포**다. 로컬에서 발견한 개선은 로컬에서 고치지 말고 정본 레포에 PR을 올린 뒤 재설치한다.
 - 다른 프로젝트에 처음 설치할 때도 `scripts/reinstall.sh`(신규/재설치 겸용)를 그대로 쓸 수 있다 — 다만 스크립트는 skills + tier 에이전트만 설치하고 훅은 설치하지 않으므로, 훅 등록·검증 순서는 이 문서가 아니라 [README.md](../README.md) §설치("처음 설치하는 사람" 3단계)를 따른다.
 - 설치 프로젝트가 3곳을 넘으면 복사 방식을 접고 플러그인화(BACKLOG B-04)로 전환한다.
+
+## 7. resume 백스톱 전역 등록(머신당 1회)
+
+frontmatter 훅은 같은 프로세스의 `/compact` 뒤에는 유지되지만 `claude --resume` 뒤에는 꺼진다. 이 틈은 전역 `~/.claude/settings.json`에 등록하는 resume 백스톱(`hooks/resume-backstop.cjs`)이 메운다.
+
+- 백스톱은 전사에 `/delegate-first` 호출 기록이 있는 세션에서만 차단 훅을 실행한다. 기록이 없는 세션은 통과시킨다.
+- 등록 항목의 정본은 `.claude/skills/delegate-first/hooks/resume-backstop.settings.json`이다. `scripts/reinstall.sh`는 이 등록을 하지 않는다.
+- 스킬이 설치되지 않은 머신이나 프로젝트에서는 command가 exit 0으로 끝난다. node가 없을 때도 경고만 내고 exit 0이다.
+
+전역 스킬 사본을 먼저 설치한 뒤(`scripts/reinstall.sh --dst "$HOME"`) 아래를 순서대로 실행한다.
+
+```bash
+mkdir -p ~/.claude-backups && cp -p ~/.claude/settings.json ~/.claude-backups/settings.json.$(date +%Y%m%d-%H%M%S)   # 1. 백업
+node -e 'const fs=require("fs");const [p,e]=process.argv.slice(1);const j=JSON.parse(fs.readFileSync(p,"utf8"));j.hooks=j.hooks||{};const a=j.hooks.PreToolUse=j.hooks.PreToolUse||[];if(!JSON.stringify(a).includes("resume-backstop.cjs")){a.push(JSON.parse(fs.readFileSync(e,"utf8")));fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")}' ~/.claude/settings.json ~/.claude/skills/delegate-first/hooks/resume-backstop.settings.json   # 2. 추가(이미 있으면 그대로 둔다)
+grep -c "resume-backstop.cjs" ~/.claude/settings.json   # 3. 1이면 등록됨
+```
+
+- 2번은 들여쓰기 2칸으로 파일을 다시 쓴다. 원래 들여쓰기가 다르면 diff가 커지므로 1번 백업과 `diff`로 추가분만 있는지 본다.
+- 등록 뒤 확인은 재개 세션에서 한다. `/delegate-first`를 호출한 세션을 끝내고 `claude --resume <세션 id>`로 연 뒤 `effort` 없이 Agent를 호출하면 exit 2로 막혀야 한다.
+- 회귀 테스트는 `scripts/test-resume-backstop.sh`다.

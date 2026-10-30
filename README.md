@@ -114,6 +114,7 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 2. **훅은 따로 등록하지 않는다.** 훅 파일은 스킬 디렉터리(`.claude/skills/delegate-first/hooks/`)에 들어 있어 1번에서 스킬과 함께 설치된다.
    - 등록은 `SKILL.md` frontmatter `hooks`(PreToolUse, matcher `Agent`)가 맡는다. 훅은 delegate-first 스킬을 호출한 세션에서만 켜진다.
    - `settings.json`에는 등록하지 않는다. 옛 `settings.json` 등록(`enforce-subagent-model`)이 전역이나 프로젝트에 남아 있으면 스킬 호출 세션에서 훅이 이중 실행되므로 그 등록을 지운다.
+   - 예외는 resume 백스톱 하나다. frontmatter 훅은 `claude --resume` 뒤에 꺼지므로 백스톱을 전역 `~/.claude/settings.json`에 머신당 1회 등록한다. 절차는 [docs/REINSTALL.md §7](docs/REINSTALL.md#7-resume-백스톱-전역-등록머신당-1회)이고, `scripts/reinstall.sh`는 이 등록을 하지 않는다.
 3. [검증 3단계](#검증-3단계-설치-후-반드시-실행)를 돌려 스킬·훅·tier 에이전트가 실제로 발효 중인지 확인한다.
 
 이후 정본 최신판으로 **갱신**할 때는 1번을 `scripts/reinstall.sh`(`--dst` 지정, 신규/기존 겸용)로 반복하면 된다 — `cp -R` 수동 절차를 재실행하면 병합 문제(위 A) 참고)가 생긴다.
@@ -143,6 +144,8 @@ cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
 
 훅은 위 `cp -R`로 스킬 디렉터리와 함께 복사된다. 등록은 `SKILL.md` frontmatter `hooks`가 맡으므로 `settings.json`에 등록하지 않는다.
 - 훅은 delegate-first 스킬을 호출한 세션에서만 켜진다. 스킬을 호출하지 않은 세션에는 자동 강제가 없다.
+- 같은 프로세스의 `/compact` 뒤에는 유지되지만 `claude --resume` 뒤에는 꺼진다.
+- 재개 세션은 전역 등록한 resume 백스톱(`hooks/resume-backstop.cjs`)이 지킨다. 백스톱은 전사에 `/delegate-first` 호출 기록이 있을 때만 같은 차단 훅을 실행한다.
 - command는 `${CLAUDE_PROJECT_DIR}` 아래 프로젝트 사본을 먼저 찾고, 없으면 `$HOME/.claude/skills/delegate-first/hooks/`의 전역 사본을 쓴다.
 - 사본이 없거나 node가 없거나 훅이 0·2가 아닌 코드로 끝나면 exit 2로 막는다(fail-closed).
 
@@ -152,9 +155,9 @@ break-glass 2종은 **사람 전용**이다. 종류와 범위는 [호출 규약]
 
 이 레포 자체도 같은 배선을 쓴다. `.claude/settings.json`은 `{}`이고 훅 등록은 `SKILL.md` frontmatter 하나다. `${CLAUDE_PROJECT_DIR}`는 Claude Code가 훅 command 안에서 프로젝트 루트 절대경로로 확장해주는 변수라 경로를 하드코딩하지 않고도 이식 가능하다.
 
-**trust 동작 주의**: 훅은 스킬을 호출한 세션에서만 켜진다. "Agent 호출이 차단되지 않는다"의 원인은 스킬 미호출, frontmatter `hooks` 누락, 훅 경로 문제 중 하나다. 대화형 세션의 workspace trust 다이얼로그가 settings 파일 훅을 보류하는 동작이 스킬 frontmatter 훅에도 같은지, 헤드리스(`-p`/SDK) 세션에서 frontmatter 훅이 즉시 실행되는지는 미검증이다(이 레포에 근거 없음).
+**trust 동작 주의**: 훅은 스킬을 호출한 세션에서만 켜진다. "Agent 호출이 차단되지 않는다"의 원인은 스킬 미호출, frontmatter `hooks` 누락, 훅 경로 문제, 재개 세션의 백스톱 미등록 중 하나다. 대화형 세션의 workspace trust 다이얼로그가 settings 파일 훅을 보류하는 동작이 스킬 frontmatter 훅에도 같은지, 헤드리스(`-p`/SDK) 세션에서 frontmatter 훅이 즉시 실행되는지는 미검증이다(이 레포에 근거 없음).
 
-**훅 공급망 고지**: 이 레포는 커밋된 `SKILL.md` frontmatter 등록 + 커밋된 훅 스크립트(`.claude/skills/delegate-first/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/skills/delegate-first/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.) 이 서약의 범위는 `.claude/skills/delegate-first/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/skills/delegate-first/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
+**훅 공급망 고지**: 이 레포는 커밋된 `SKILL.md` frontmatter 등록 + 커밋된 훅 스크립트(`.claude/skills/delegate-first/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/skills/delegate-first/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다. `resume-backstop.cjs`는 여기에 두 동작을 더한다. 전사 파일을 읽기 전용으로 열고, 같은 node로 `enforce-subagent-model.cjs` 하나를 실행한다. 쓰기·네트워크는 하지 않는다.) 이 서약의 범위는 `.claude/skills/delegate-first/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/skills/delegate-first/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
 
 ### B) 플러그인화
 

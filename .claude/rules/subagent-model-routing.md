@@ -36,7 +36,7 @@
    - **반환 뒤 대조**: 서브에이전트 반환마다 전사(`subagents/agent-*.meta.json`의 `model`, `.jsonl` assistant 레코드의 `effort`·`message.model`)로 이름 토큰과 실제값을 대조한다. 불일치는 구조 이슈로 기록하고 원인(핀 드리프트·named 상속)을 닫은 뒤 다음 발주를 낸다. `meta.json`의 `model`은 요청값 기록이라 실제값은 `.jsonl`로 판정하고, haiku처럼 `effort` 키가 없는 레코드는 불일치가 아니라 「effort 판정 불가」로 적는다.
 
 ## 강제 장치
-> ⚠️ **훅은 delegate-first 스킬을 호출한 세션에서만 켜진다.** 아래 훅은 `SKILL.md` frontmatter `hooks`(PreToolUse, matcher `Agent`)로 등록되며 레포 `settings.json` 등록은 없다. 스킬을 호출하지 않은 세션에는 자동 강제가 없고, 아래 서술은 모델이 지키는 규약이다. OMC `pre-tool-enforcer.mjs`의 model-routing deny 분기는 Bedrock/Vertex/프록시 환경 전용이라 표준 Anthropic 계정에서는 대신하지 못한다.
+> ⚠️ **훅은 delegate-first 스킬을 호출한 세션에서만 켜진다.** 아래 훅은 `SKILL.md` frontmatter `hooks`(PreToolUse, matcher `Agent`)로 등록되며 레포 `settings.json` 등록은 없다. 이 등록은 같은 프로세스의 `/compact` 뒤에는 유지되지만 `claude --resume` 뒤에는 꺼진다. 재개 세션은 전역 `~/.claude/settings.json`에 등록한 resume 백스톱(`hooks/resume-backstop.cjs`)이 지킨다. 백스톱은 전사에 `/delegate-first` 호출 기록이 있을 때만 같은 훅을 실행한다. 스킬을 호출하지 않은 세션에는 자동 강제가 없고, 아래 서술은 모델이 지키는 규약이다. OMC `pre-tool-enforcer.mjs`의 model-routing deny 분기는 Bedrock/Vertex/프록시 환경 전용이라 표준 Anthropic 계정에서는 대신하지 못한다.
 
 - PreToolUse 훅 `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs` (matcher: Agent)가
   `model`·`effort` 미지정 호출과 tier 핀 불일치(B-11 model·B-12 effort)를 exit 2로
