@@ -9,12 +9,16 @@
 # Blueprint: docs/blueprint/delegate-first-v2.md §3 (layout) and §6
 # (tracking policy: only *suggest* the .gitignore line, never edit it).
 #
-# Exit: 0 created, 2 usage or structural error (nothing written).
+# Exit: 0 created, 2 usage or structural error. A failure after the task
+# directory was made removes what this run created (the directory, and
+# .delegate/ itself if this run made it), so nothing is left half-built.
 # Must run on macOS stock bash 3.2 and BSD tools.
 
 set -u
 
-SLUG_RE='^[0-9]{8}-[a-z0-9]+(-[a-z0-9]+)*$'
+# Calendar-invalid dates such as 20260230 pass: the slug is an identifier and
+# never used for date arithmetic. Switch to a date(1) check if that changes.
+SLUG_RE='^[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])-[a-z0-9]+(-[a-z0-9]+)*$'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES="$SCRIPT_DIR/../templates"
 
@@ -33,12 +37,29 @@ done
 dir="$root/.delegate/$slug"
 [ ! -e "$dir" ] || die "이미 있다: $dir (덮어쓰지 않는다)"
 
-mkdir -p "$dir/orders" "$dir/outputs" || die "디렉터리를 만들지 못했다: $dir"
+made_delegate=0
+[ -d "$root/.delegate" ] || made_delegate=1
+mkdir -p "$root/.delegate" || die "디렉터리를 만들지 못했다: $root/.delegate"
+# plain mkdir (no -p) fails if another run created $dir first, so the cleanup
+# below only ever removes a directory this run made.
+if ! mkdir "$dir"; then
+  [ "$made_delegate" -eq 0 ] || rmdir "$root/.delegate" 2>/dev/null
+  die "디렉터리를 만들지 못했다: $dir"
+fi
+
+# abort <msg> — remove what this run created, then die.
+abort() {
+  rm -rf "$dir"
+  [ "$made_delegate" -eq 0 ] || rmdir "$root/.delegate" 2>/dev/null
+  die "$@"
+}
+
+mkdir "$dir/orders" "$dir/outputs" || abort "디렉터리를 만들지 못했다: $dir"
 for f in TASK.md REFS.md PROGRESS.md; do
   LC_ALL=C sed \
     -e "s/<slug>/$slug/g" \
     -e "s/^<new-task.sh가 git rev-parse HEAD로 채운다>\$/$base/" \
-    "$TEMPLATES/$f" > "$dir/$f" || die "템플릿 복사 실패: $f"
+    "$TEMPLATES/$f" > "$dir/$f" || abort "템플릿 복사 실패: $f"
 done
 
 echo "생성: $dir"
