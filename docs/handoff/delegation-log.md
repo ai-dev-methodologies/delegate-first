@@ -79,3 +79,4 @@
 | 2026-10-30 | judge-max | [ilyas-plan-fable-max] 판정표·청사진 골격·재구축 계획 | fable | max | Agent(tier) | 판정표·청사진 골격·재구축 계획 산출 (전사 기준 사후 기록, 이름·전사 일치) |
 | 2026-10-30 | reviewer-high | [ilyas-fit-opus-high] 이식·별도 적용 판정 | opus | high | Agent(tier) | 이식/별도 판정: 혼합 (전사 기준 사후 기록, 이름·전사 일치) |
 | 2026-10-30 | executor-high | [v2-blueprint-sonnet-high] v2 청사진·판정표 2건·로그 소급 작성 | sonnet | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-3a-opus-high] 청사진 결정 D8~D13 반영·작업 디렉터리 뼈대(new-task·close-task·템플릿 4종) | opus | high | Agent(tier) | (리뷰 대기) |
