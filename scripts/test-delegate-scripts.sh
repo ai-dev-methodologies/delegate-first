@@ -18,12 +18,19 @@
 set -uo pipefail  # no -e: run every case and tally results
 
 # isolate_git_env — drop the repo-locating variables a git hook exports
-# (pre-commit sets GIT_DIR·GIT_INDEX_FILE). Inherited, they send every
-# sandbox git init·config·add·commit into the caller's repo instead.
+# (pre-commit sets GIT_DIR·GIT_INDEX_FILE) and the config a caller injects
+# (`git -c` sets GIT_CONFIG_PARAMETERS; GIT_CONFIG_COUNT·KEY_n·VALUE_n).
+# Inherited, they send every sandbox git init·config·add·commit into the
+# caller's repo or apply the caller's config (e.g. core.hooksPath) there.
+# Same set as .githooks/pre-commit.
 isolate_git_env() {
+  local git_cfg_var
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX \
-    GIT_NAMESPACE GIT_CEILING_DIRECTORIES
+    GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+  for git_cfg_var in $(env | sed -n 's/^\(GIT_CONFIG_[A-Z]*_[0-9][0-9]*\)=.*/\1/p'); do
+    unset "${git_cfg_var}"
+  done
 }
 isolate_git_env
 
@@ -433,6 +440,63 @@ write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
 progress_raw "$d/.delegate/$SLUG" '|  2  |  01-review-opus-high  |  H 0건  |||  |\n'
 run_close "$d" "$SLUG"
 expect close_readonly_row_with_padded_cells_passes 0 "" '^FAIL'
+
+# M4: a 반환 cell made only of placeholders (whitespace incl. U+3000, -, —,
+# 없음, (대기), 대기, HTML comments) counts as empty and buys no exemption.
+i=0
+for ret in ' 　 ' '-' '—' '없음' '(대기)' '대기' '<!-- 반환 대기 -->' '— <!-- x --> 　없음'; do
+  i=$((i + 1))
+  d="$(task_repo "c17k$i")"
+  write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+  progress_raw "$d/.delegate/$SLUG" "| 1 | 01-review-opus-high | $ret | | | |\n"
+  run_close "$d" "$SLUG"
+  expect "close_readonly_placeholder_return_fails[$ret]" 1 '^FAIL pair .*01-review-opus-high'
+done
+
+d="$(task_repo c17l)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '| 1 | 01-review-opus-high | H 0건 <!-- R1 --> | | | |\n'
+run_close "$d" "$SLUG"
+expect close_readonly_return_with_comment_and_text_passes 0 "" '^FAIL'
+
+# L4: lines inside a code fence are neither headings nor table rows; the
+# 회차 section runs to the next `#`/`##` heading, and rows under a `###`
+# (or deeper) subsection inside it do not count.
+d="$(task_repo c17m)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '```\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n```\n'
+run_close "$d" "$SLUG"
+expect close_readonly_row_in_backtick_fence_fails 1 '^FAIL pair .*01-review-opus-high'
+
+d="$(task_repo c17m2)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '  ````\n```\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n   ````\n'
+run_close "$d" "$SLUG"
+expect close_readonly_row_in_indented_long_fence_fails 1 '^FAIL pair .*01-review-opus-high'
+
+d="$(task_repo c17n)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '## Open Items\n~~~md\n## 회차\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n~~~\n'
+run_close "$d" "$SLUG"
+expect close_readonly_fenced_round_heading_fails 1 '^FAIL pair .*01-review-opus-high'
+
+d="$(task_repo c17o)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '```\n## Open Items\n```\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n'
+run_close "$d" "$SLUG"
+expect close_fenced_heading_does_not_end_round_section_passes 0 "" '^FAIL'
+
+d="$(task_repo c17p)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '# 부록\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n'
+run_close "$d" "$SLUG"
+expect close_readonly_row_after_h1_fails 1 '^FAIL pair .*01-review-opus-high'
+
+d="$(task_repo c17q)"
+write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+progress_raw "$d/.delegate/$SLUG" '### 예시\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n'
+run_close "$d" "$SLUG"
+expect close_readonly_row_in_round_subsection_fails 1 '^FAIL pair .*01-review-opus-high'
 
 # M2: files that are not NN-<name>.md must fail instead of being skipped
 d="$(task_repo c18)"

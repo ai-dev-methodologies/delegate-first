@@ -1,6 +1,12 @@
 ---
 name: delegate-first
 description: Enforces that the main session acts only as planner, delegator, reviewer, and judge — routing all execution work (edits, writes, execution-style commands) to subagents with a task-appropriate model and reasoning effort. Use ONLY when the user explicitly invokes this skill by name (/delegate-first) or explicitly asks for the delegation discipline. Do not activate proactively.
+hooks:
+  PreToolUse:
+    - matcher: "Agent"
+      hooks:
+        - type: command
+          command: 'f="${CLAUDE_PROJECT_DIR:-}/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"; [ -f "$f" ] || f="${HOME:-}/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"; [ -f "$f" ] || { echo "[delegate-first] 훅 스크립트를 찾지 못했다(프로젝트·전역 설치 모두 없음). Agent 호출을 막는다(fail-closed). scripts/reinstall.sh로 스킬을 다시 설치한다." >&2; exit 2; }; command -v node >/dev/null 2>&1 || { echo "[delegate-first] node를 찾지 못했다. Agent 호출을 막는다(fail-closed)." >&2; exit 2; }; node "$f" && rc=0 || rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "[delegate-first] 훅이 예상 밖 종료 코드 ${rc}로 끝났다. Agent 호출을 막는다(fail-closed)." >&2; exit 2; }; exit "$rc"'
 ---
 
 # Delegate First

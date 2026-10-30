@@ -87,7 +87,7 @@ Youssef 루프 자료와 사용자 결정 D1~D7을 이 자료에 섞은 곳이�
 | 목표 | tier 호출(`explorer-low` 제외)에 `CONTRACT:` 줄이 없거나 형식·이름이 어긋나면 훅이 exit 2를 낸다 |
 | 입력 | `enforce-subagent-model.cjs`의 `passWithNameCheck` 구간, `scripts/smoke-hook.sh`, 청사진 §4·§7 |
 | 유효 결정 | B-18 이름 규약은 유지한다. 이름 필수·금지는 어떤 break-glass로도 우회되지 않는다 |
-| 쓰기 범위 | `.claude/hooks/enforce-subagent-model.cjs`, `scripts/smoke-hook.sh` |
+| 쓰기 범위 | `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`, `scripts/smoke-hook.sh` |
 | 금지 | 전역 훅 사본(`~/.claude`) 수정, commit, push, B-11·B-12 분기의 의미 변경 |
 | 완료 증거 | 아래 요구 ID별 표 |
 

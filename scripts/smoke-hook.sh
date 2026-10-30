@@ -2,13 +2,14 @@
 #
 # scripts/smoke-hook.sh — 재실행 가능한 enforce-subagent-model.cjs 회귀 스모크.
 #
-# 목적: .claude/hooks/enforce-subagent-model.cjs를 건드리는 PR의 회귀 게이트.
+# 목적: .claude/skills/delegate-first/hooks/enforce-subagent-model.cjs를 건드리는 PR의 회귀 게이트.
 #   "사람이 diff를 읽는다"가 이 훅의 유일한 공급망 게이트라, 이 스크립트가
 #   최소한 알려진 케이스(pinned 목록, whitespace, 타입 변형, prototype
 #   pollution 시도, fail-open/fail-closed 경계)의 exit code 회귀를 잡는다.
 #
 # 부작용: 없음. stdin으로 JSON을 훅에 주입하고 exit code만 관찰한다 —
-#   파일 생성/수정, 설정 변경, 네트워크 접근을 하지 않는다.
+#   설정 변경, 네트워크 접근을 하지 않는다. 스킬 frontmatter 절만 mktemp -d
+#   샌드박스에 훅 사본을 만들고 종료 시 지운다(레포 파일은 수정하지 않는다).
 #
 # 실행법:
 #   bash scripts/smoke-hook.sh                # 이 레포의 훅을 검사
@@ -16,7 +17,7 @@
 #
 set -u
 
-HOOK_PATH="${1:-$(cd "$(dirname "$0")/.." && pwd)/.claude/hooks/enforce-subagent-model.cjs}"
+HOOK_PATH="${1:-$(cd "$(dirname "$0")/.." && pwd)/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs}"
 
 if [ ! -f "$HOOK_PATH" ]; then
   echo "smoke-hook: hook 파일을 찾을 수 없음: $HOOK_PATH" >&2
@@ -76,12 +77,9 @@ run_case "oh-my-claudecode:planner + model opus + effort medium(effort 핀 없�
 run_case "statusline-setup, model·effort 없음" '{"tool_input":{"subagent_type":"statusline-setup"}}' 0
 
 # --- B-11: tier + model 명시, 기대값과 일치(+ effort 핀 일치) → 통과 (exit 0) ---
-# 주의(B-18): 이 6건과 아래 tier 통과 케이스 4건(B-12 " high", B-12 override,
-# B-11 override, C10 " fable")은 B-18 이전엔 name 없이 exit 0을 기대했었다.
-# B-18이 tier에 이름 규약 `<작업>-<model>-<effort>`를 요구하므로 각 케이스의
-# 원래 검사 목적(B-11·B-12 통과 경로)을 유지하도록 규약에 맞는 name을 넣었다
-# — name 없는 같은 입력은 이제 exit 2이고, 그 경로는 아래 B-18 절이 고정한다.
-# 의도된 동작 변경이지 회귀가 아니다.
+# 주의: 이 6건과 아래 tier 통과 케이스 4건(B-12 " high", B-12 override,
+# B-11 override, C10 " fable")의 name은 훅이 B-18을 검사하던 때 넣은 것이다.
+# 지금 훅은 name을 보지 않는다(결정 D8, 아래 「이름은 훅이 보지 않는다」 절).
 run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku","effort":"low","name":"t-haiku-low"}}' 0
 run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"medium","name":"t-sonnet-medium"}}' 0
 run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"t-sonnet-high"}}' 0
@@ -201,85 +199,43 @@ run_case "fork, 사유 없음 + ALLOW_TIER_MODEL_OVERRIDE=1 → 여전히 차단
   '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"분석"}}' 2 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
 
-# --- B-18: 이름 규약 `<작업>-<model>-<effort>`(원칙 5) ---
-# effort까지 핀된 tier 6종(TIER_EXPECTED_EFFORT 키)은 name 필수·토큰은 실제
-# 적용값과 일치. 그 밖의 타입(OMC 7종 포함 — frontmatter에 effort 핀 없음)은
-# name이 있으면 차단. fork·statusline-setup은 이름 검사 대상이 아니다.
-# 이름 필수·이름 금지는 어떤 break-glass로도 우회되지 않는다.
-run_case "B-18: tier executor-high + 올바른 이름 → 통과" \
+# --- 이름은 훅이 보지 않는다(B-18 제거, 결정 D8) ---
+# 이름 규약 `<작업>-<model>-<effort>`은 close-task.sh가 사후에 검사한다. 훅은
+# name 유무·형식과 무관하게 model·effort·fork 판정만 한다. 아래 케이스는 예전
+# B-18 절에서 차단(exit 2)을 기대하던 입력이 이제 통과하는지, 그리고 이름이
+# B-11·B-12·부재 차단을 우회하지 않는지를 고정한다.
+run_case "D8: tier executor-high + 규약 이름 → 통과" \
   '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"p5-fix-sonnet-high"}}' 0
-run_case "B-18: tier reviewer-high + 올바른 이름 → 통과" \
-  '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high","name":"x-opus-high"}}' 0
-run_case "B-18: tier executor-max + 작업 토큰에 하이픈·밑줄 → 통과" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"k289_rr-fix-opus-high"}}' 0
-run_case "B-18: tier + 이름 없음 → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high"}}' 2
-run_case "B-18: tier + 토큰 순서 뒤바뀜(x-high-opus) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-high-opus"}}' 2
-run_case "B-18: tier + model 토큰 불일치(x-opus-high, 핀 sonnet) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-opus-high"}}' 2
-run_case "B-18: tier + effort 토큰 불일치(x-sonnet-medium, 핀 high) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 2
-run_case "B-18: tier + 작업 토큰 없음(opus-high) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"opus-high"}}' 2
-run_case "B-18: tier + 작업 토큰 빈 값(-opus-high) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"-opus-high"}}' 2
-run_case "B-18: tier + 작업 토큰이 밑줄로 시작(_x-opus-high) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"_x-opus-high"}}' 2
-run_case "B-18: tier + 대문자 토큰(x-OPUS-HIGH) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-OPUS-HIGH"}}' 2
-run_case "B-18: tier + 토큰 뒤 추가 텍스트(x-opus-high-2) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-opus-high-2"}}' 2
-run_case "B-18: tier + name 공백만 → 차단(없음으로 본다)" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"  "}}' 2
-run_case "B-18: tier + name 빈 문자열 → 차단(없음으로 본다)" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":""}}' 2
-run_case "B-18: tier + name 숫자 → 차단" \
-  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":123}}' 2
-run_case "B-18: general-purpose + 이름 → 차단" \
-  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium","name":"x-sonnet-medium"}}' 2
-run_case "B-18: general-purpose 무명 → 통과" \
-  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium"}}' 0
-run_case "B-18: general-purpose + name 공백만 → 통과(없음으로 본다)" \
-  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium","name":" "}}' 0
-run_case "B-18: oh-my-claudecode:executor + 이름 → 차단(effort 핀 없음)" \
-  '{"tool_input":{"subagent_type":"oh-my-claudecode:executor","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2
-run_case "B-18: oh-my-claudecode:executor 무명 → 통과" \
-  '{"tool_input":{"subagent_type":"oh-my-claudecode:executor","model":"sonnet","effort":"high"}}' 0
-run_case "B-18: codex:codex-rescue + 이름 → 차단" \
-  '{"tool_input":{"subagent_type":"codex:codex-rescue","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2
-run_case "B-18: fork + FORK_REASON + 이름 → 기존 fork 판정(통과)" \
+run_case "D8: tier + 이름 없음 → 통과" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high"}}' 0
+run_case "D8: tier + 토큰 불일치 이름(x-opus-high, 핀 sonnet) → 통과" \
+  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-opus-high"}}' 0
+run_case "D8: tier + name 숫자 → 통과" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":123}}' 0
+run_case "D8: general-purpose + 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium","name":"x-sonnet-medium"}}' 0
+run_case "D8: oh-my-claudecode:executor + 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"oh-my-claudecode:executor","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 0
+run_case "D8: codex:codex-rescue + 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"codex:codex-rescue","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 0
+run_case "D8: fork + FORK_REASON + 이름 → 통과(fork 판정 그대로)" \
   '{"tool_input":{"subagent_type":"fork","name":"x-opus-high","prompt":"FORK_REASON: conversation-context\n작업"}}' 0
-run_case "B-18: fork + 사유 없음 + 이름 → 기존 fork 판정(차단)" \
+run_case "D8: fork + 사유 없음 + 이름 → 차단(fork 판정 그대로)" \
   '{"tool_input":{"subagent_type":"fork","name":"x-opus-high","prompt":"작업"}}' 2
-run_case "B-18: statusline-setup + 이름 → 통과(기존처럼)" \
-  '{"tool_input":{"subagent_type":"statusline-setup","name":"x-sonnet-high"}}' 0
-# break-glass 경계: ALLOW_TIER_MODEL_OVERRIDE=1이면 이름 토큰을 핀이 아니라
-# 실제 호출 model·effort와 대조한다(이름은 실제 적용값을 보여 줘야 하므로).
-# 이름 필수·이름 금지는 우회하지 않는다.
-run_case "B-18: OVERRIDE + executor-med effort high + 이름이 호출값(x-sonnet-high) → 통과" \
-  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 0 \
+run_case "D8: tier + 규약 이름 + model 없음 → 차단(이름이 부재 차단을 우회하지 않는다)" \
+  '{"tool_input":{"subagent_type":"explorer-low","name":"x-haiku-low"}}' 2
+run_case "D8: tier + 규약 이름 + model 불일치 → 차단(B-11)" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus","effort":"max","name":"x-fable-max"}}' 2
+run_case "D8: tier + 규약 이름 + effort 불일치 → 차단(B-12)" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 2
+run_case "D8: OVERRIDE + executor-med effort high + 핀값 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 0 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
-run_case "B-18: OVERRIDE + executor-med effort high + 이름이 핀값(x-sonnet-medium) → 차단" \
-  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 2 \
-  "ALLOW_TIER_MODEL_OVERRIDE=1"
-run_case "B-18: OVERRIDE + judge-max model opus effort max + 이름 x-fable-max(핀값) → 차단" \
-  '{"tool_input":{"subagent_type":"judge-max","model":"opus","effort":"max","name":"x-fable-max"}}' 2 \
-  "ALLOW_TIER_MODEL_OVERRIDE=1"
-run_case "B-18: OVERRIDE + tier 이름 없음 → 여전히 차단" \
-  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 2 \
-  "ALLOW_TIER_MODEL_OVERRIDE=1"
-run_case "B-18: OVERRIDE + general-purpose + 이름 → 여전히 차단" \
-  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2 \
-  "ALLOW_TIER_MODEL_OVERRIDE=1"
-run_case "B-18: INHERITED + general-purpose model 없음 + 이름 → 여전히 차단" \
-  '{"tool_input":{"subagent_type":"general-purpose","name":"x-sonnet-high"}}' 2 \
+run_case "D8: INHERITED + general-purpose model 없음 + 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"general-purpose","name":"x-sonnet-high"}}' 0 \
   "ALLOW_INHERITED_SUBAGENT_MODEL=1"
-run_case "B-18: INHERITED + tier model 없음 + 이름 없음 → 여전히 차단" \
-  '{"tool_input":{"subagent_type":"explorer-low"}}' 2 \
-  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
-run_case "B-18: INHERITED + tier model·effort 없음 + 핀값 이름 → 통과" \
-  '{"tool_input":{"subagent_type":"explorer-low","name":"x-haiku-low"}}' 0 \
+run_case "D8: INHERITED + tier model 없음 + 이름 없음 → 통과" \
+  '{"tool_input":{"subagent_type":"explorer-low"}}' 0 \
   "ALLOW_INHERITED_SUBAGENT_MODEL=1"
 
 # --- 파싱 불가/빈 stdin: 설계된 fail-open ---
@@ -303,24 +259,205 @@ else
   - fork 통과 케이스 stderr에 'effective model' 안내 없음 (실제 stderr: ${fork_stderr:-<비어있음>})"
 fi
 
-# --- B-18 차단 메시지 문구 검사 (기대 이름 예시·원칙 5 안내가 유지되는지) ---
-check_stderr() {
-  desc="$1"; input="$2"; needle="$3"
-  err=$(printf '%s' "$input" | node "$HOOK_PATH" 2>&1 >/dev/null)
-  if printf '%s' "$err" | grep -qF -- "$needle"; then
-    PASS_COUNT=$((PASS_COUNT + 1))
+# --- 스킬 frontmatter 등록(결정 ③): 훅은 delegate-first를 호출한 세션에서만 켜진다 ---
+# SKILL.md frontmatter의 PreToolUse matcher "Agent" command를 꺼내 /bin/sh로
+# 실행한다. 레포 설치(${CLAUDE_PROJECT_DIR} 쪽)와 전역 설치($HOME 쪽) 모두에서
+# 스크립트를 찾아야 하고, 둘 다 없거나 node가 없으면 exit 2(fail-closed)여야
+# 한다. 샌드박스는 mktemp -d 아래에만 만들고 끝나면 지운다.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SKILL_MD="$REPO_ROOT/.claude/skills/delegate-first/SKILL.md"
+SKILL_HOOK_REL=".claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"
+PASS_INPUT='{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high"}}'
+BLOCK_INPUT='{"tool_input":{"subagent_type":"executor-high"}}'
+
+fm_pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
+fm_fail() {
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - $1"
+}
+
+# frontmatter(첫 두 '---' 사이)만 본다.
+FRONTMATTER="$(awk 'NR==1 && $0=="---"{f=1; next} f && $0=="---"{exit} f' "$SKILL_MD" 2>/dev/null)"
+if printf '%s\n' "$FRONTMATTER" | grep -q '^hooks:$' &&
+   printf '%s\n' "$FRONTMATTER" | grep -q '^  PreToolUse:$' &&
+   printf '%s\n' "$FRONTMATTER" | grep -q '^    - matcher: "Agent"$'; then
+  fm_pass
+else
+  fm_fail "①: SKILL.md frontmatter에 hooks.PreToolUse matcher \"Agent\" 등록이 없음"
+fi
+
+# command는 YAML 작은따옴표 스칼라 한 줄이다('' → ').
+CMD_LINES="$(printf '%s\n' "$FRONTMATTER" | grep -c "^          command: '.*'$")"
+HOOK_CMD="$(printf '%s\n' "$FRONTMATTER" | sed -n "s/^          command: '\(.*\)'$/\1/p" | sed "s/''/'/g")"
+if [ "$CMD_LINES" = "1" ] && printf '%s' "$HOOK_CMD" | grep -qF "$SKILL_HOOK_REL"; then
+  fm_pass
+else
+  fm_fail "①: frontmatter command가 1줄이 아니거나 $SKILL_HOOK_REL 를 가리키지 않음 (줄 수: $CMD_LINES)"
+fi
+
+FM_SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$FM_SANDBOX"' EXIT
+mkdir -p "$FM_SANDBOX/proj/$(dirname "$SKILL_HOOK_REL")" "$FM_SANDBOX/home/$(dirname "$SKILL_HOOK_REL")" \
+  "$FM_SANDBOX/emptyproj" "$FM_SANDBOX/emptyhome"
+cp "$HOOK_PATH" "$FM_SANDBOX/proj/$SKILL_HOOK_REL"
+cp "$HOOK_PATH" "$FM_SANDBOX/home/$SKILL_HOOK_REL"
+
+# run_cmd <CLAUDE_PROJECT_DIR 또는 -(미설정)> <HOME 또는 -(미설정)> <PATH> <stdin> → FM_RC, FM_ERR
+# 셸은 FM_SH(기본 /bin/sh), 셸 옵션은 FM_SH_OPT(예 -e·-u, 기본 없음)로 바꾼다.
+FM_SH=/bin/sh
+FM_SH_OPT=""
+run_cmd() {
+  fm_in="$4"; fm_path="$3"; fm_p="$1"; fm_h="$2"
+  set --
+  [ "$fm_p" = "-" ] || set -- "$@" "CLAUDE_PROJECT_DIR=$fm_p"
+  [ "$fm_h" = "-" ] || set -- "$@" "HOME=$fm_h"
+  FM_ERR=$(printf '%s' "$fm_in" | env -u CLAUDE_PROJECT_DIR -u HOME "$@" PATH="$fm_path" \
+    "$FM_SH" ${FM_SH_OPT:+"$FM_SH_OPT"} -c "$HOOK_CMD" 2>&1 >/dev/null)
+  FM_RC=$?
+}
+
+# fm_case <설명> <기대 exit> <stderr에 있어야 할 문구 또는 빈 값> <run_cmd 인자 4개>
+fm_case() {
+  desc="$1"; expected="$2"; needle="$3"; shift 3
+  run_cmd "$@"
+  if [ "$FM_RC" = "$expected" ] && { [ -z "$needle" ] || printf '%s' "$FM_ERR" | grep -qF -- "$needle"; }; then
+    fm_pass
   else
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-    FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
-  - ${desc}: stderr에 '${needle}' 없음 (실제 stderr: ${err:-<비어있음>})"
+    fm_fail "${desc} (기대 exit ${expected}, 실제 exit ${FM_RC}, stderr: ${FM_ERR:-<비어있음>})"
   fi
 }
-check_stderr "B-18 tier 이름 없음 메시지에 기대 이름 예시" \
-  '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high"}}' "<작업>-opus-high"
-check_stderr "B-18 tier 토큰 불일치 메시지에 기대 이름 예시" \
-  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-high-sonnet"}}' "<작업>-sonnet-high"
-check_stderr "B-18 핀 없는 타입 이름 메시지" \
-  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"low","name":"x"}}' "핀 없는 타입은 이름 없이 띄운다"
+
+fm_case "②: 레포 설치 — 통과 입력 → exit 0" 0 "" \
+  "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+fm_case "②: 레포 설치 — 차단 입력 → 훅 판정 exit 2" 2 "[subagent-model-routing]" \
+  "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" "$BLOCK_INPUT"
+fm_case "②: 전역 설치(프로젝트에 사본 없음) — 통과 입력 → exit 0" 0 "" \
+  "$FM_SANDBOX/emptyproj" "$FM_SANDBOX/home" "$PATH" "$PASS_INPUT"
+fm_case "②: 전역 설치(CLAUDE_PROJECT_DIR 미설정) — 통과 입력 → exit 0" 0 "" \
+  - "$FM_SANDBOX/home" "$PATH" "$PASS_INPUT"
+fm_case "②: 전역 설치 — 차단 입력 → 훅 판정 exit 2" 2 "[subagent-model-routing]" \
+  "$FM_SANDBOX/emptyproj" "$FM_SANDBOX/home" "$PATH" "$BLOCK_INPUT"
+fm_case "③: 스크립트가 어디에도 없음 → exit 2 + 안내" 2 "훅 스크립트를 찾지 못했다" \
+  "$FM_SANDBOX/emptyproj" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+fm_case "③: node 없음 → exit 2 + 안내" 2 "node를 찾지 못했다" \
+  "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "/nonexistent" "$PASS_INPUT"
+
+# ⑥: 스크립트를 찾았어도 node·스크립트가 0·2가 아닌 코드(1·127·신호 등)로
+# 끝나면 command가 2로 바꾼다(fail-closed). 빈 stdin의 0(설계된 fail-open)은 유지한다.
+mkdir -p "$FM_SANDBOX/badsyntax/$(dirname "$SKILL_HOOK_REL")" "$FM_SANDBOX/noperm/$(dirname "$SKILL_HOOK_REL")" \
+  "$FM_SANDBOX/shim127"
+printf '%s\n' 'this is not ( valid javascript' > "$FM_SANDBOX/badsyntax/$SKILL_HOOK_REL"
+cp "$HOOK_PATH" "$FM_SANDBOX/noperm/$SKILL_HOOK_REL"
+chmod 000 "$FM_SANDBOX/noperm/$SKILL_HOOK_REL"
+printf '%s\n' '#!/bin/sh' 'exit 127' > "$FM_SANDBOX/shim127/node"
+chmod +x "$FM_SANDBOX/shim127/node"
+fm_case "⑥: 문법 오류 훅(node exit 1) → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+  "$FM_SANDBOX/badsyntax" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+fm_case "⑥: chmod 000 훅(읽기 불가) → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+  "$FM_SANDBOX/noperm" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+fm_case "⑥: exit 127 node shim → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+  "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$FM_SANDBOX/shim127:/usr/bin:/bin" "$PASS_INPUT"
+fm_case "⑥: 빈 stdin → exit 0(설계된 fail-open 유지)" 0 "" \
+  "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" ""
+
+# ⑥: 셸 옵션(-e·-u)이 켜져 있어도 같은 매핑이어야 한다. -e는 node의 비0 종료에서
+# 매핑 전에 셸을 끝내고, -u는 미설정 CLAUDE_PROJECT_DIR·HOME 참조에서 셸을 끝낸다.
+mkdir -p "$FM_SANDBOX/shim1"
+printf '%s\n' '#!/bin/sh' 'exit 1' > "$FM_SANDBOX/shim1/node"
+chmod +x "$FM_SANDBOX/shim1/node"
+for fm_mode in "/bin/sh -e" "/bin/bash -e" "/bin/sh -u"; do
+  FM_SH="${fm_mode%% *}"; FM_SH_OPT="${fm_mode#* }"
+  fm_case "⑥: ${fm_mode} — 문법 오류 훅 → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+    "$FM_SANDBOX/badsyntax" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+  fm_case "⑥: ${fm_mode} — exit 1 node shim → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+    "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$FM_SANDBOX/shim1:/usr/bin:/bin" "$PASS_INPUT"
+  fm_case "⑥: ${fm_mode} — 통과 입력 → exit 0" 0 "" \
+    "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" "$PASS_INPUT"
+  fm_case "⑥: ${fm_mode} — 차단 입력 → 훅 판정 exit 2" 2 "[subagent-model-routing]" \
+    "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" "$BLOCK_INPUT"
+  fm_case "⑥: ${fm_mode} — 빈 stdin → exit 0" 0 "" \
+    "$FM_SANDBOX/proj" "$FM_SANDBOX/emptyhome" "$PATH" ""
+  fm_case "⑥: ${fm_mode} — CLAUDE_PROJECT_DIR 미설정·전역 문법 오류 훅 → exit 2 + 안내" 2 "예상 밖 종료 코드" \
+    - "$FM_SANDBOX/badsyntax" "$PATH" "$PASS_INPUT"
+  fm_case "⑥: ${fm_mode} — HOME 미설정·어디에도 없음 → exit 2 + 안내" 2 "훅 스크립트를 찾지 못했다" \
+    "$FM_SANDBOX/emptyproj" - "$PATH" "$PASS_INPUT"
+done
+FM_SH=/bin/sh; FM_SH_OPT=""
+
+# ④: 레포 settings.json에는 이 훅 등록이 없다(스킬 frontmatter가 유일한 등록처).
+if grep -q "enforce-subagent-model" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
+  fm_fail "④: .claude/settings.json에 enforce-subagent-model 등록이 남아 있음"
+else
+  fm_pass
+fi
+
+# ⑤: 훅에 B-18(이름 검사) 분기가 없다.
+# 주석 줄(/** */ 본문·//)은 제외하고 코드에서만 찾는다.
+B18_LEFT="$(grep -nE 'B-18|passWithNameCheck|NAME_TASK_RE|toolInput\.name' "$HOOK_PATH" | grep -vE '^[0-9]+:[[:space:]]*(\*|//)' | head -3 | tr '\n' ' ')"
+if [ -n "$B18_LEFT" ]; then
+  fm_fail "⑤: 훅 코드에 B-18 이름 검사 흔적이 남아 있음 ($B18_LEFT)"
+else
+  fm_pass
+fi
+
+# ⑦: .githooks/pre-commit은 테스트 스위트를 부르기 전에 git이 hook에 넘긴 환경
+# 변수(GIT_DIR·GIT_INDEX_FILE 등)를 지운다. 지우지 않으면 스위트 안의 샌드박스
+# git 명령이 커밋 중인 레포의 공통 .git/config를 고친다. 재현은 /tmp 미끼 레포의
+# linked worktree에서 커밋해 미끼 pre-commit(정본 사본)이 stub 스위트를 부르게
+# 하는 방식으로만 한다. stub은 받은 GIT_* 이름을 적고 샌드박스에서 git config를 쓴다.
+# 커밋은 `git -c core.hooksPath=<절대경로>`(GIT_CONFIG_PARAMETERS 주입)와
+# GIT_CONFIG_COUNT·GIT_CONFIG_KEY_0·GIT_CONFIG_VALUE_0을 함께 넘긴다. 둘 다 지워지지
+# 않으면 샌드박스 git이 그 설정을 물려받는다(core.hooksPath면 스위트의 샌드박스
+# 커밋이 이 pre-commit을 다시 부른다). stub은 샌드박스에서 본 두 설정값도 적는다.
+PC_SANDBOX="$(mktemp -d /tmp/smoke-precommit.XXXXXX)"
+trap 'rm -rf "$FM_SANDBOX" "$PC_SANDBOX"' EXIT
+PC_GIT_VARS="GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0"
+pc_run() (
+  # 이 스크립트가 pre-commit 안에서 돌 때도 미끼 git 명령이 바깥 레포를 보지 않게 한다.
+  for v in ${PC_GIT_VARS}; do unset "${v}"; done
+  set -e
+  bait="${PC_SANDBOX}/bait"
+  mkdir -p "${bait}/scripts" "${bait}/.githooks"
+  cp "${REPO_ROOT}/.githooks/pre-commit" "${bait}/.githooks/pre-commit"
+  printf '%s\n' 'import sys' 'sys.exit(0)' > "${bait}/scripts/lint-delegate-first.py"
+  for s in test-lint smoke-hook test-reinstall test-delegate-scripts; do
+    printf '%s\n' \
+      'echo "ran" >> "${BAIT_LOG}"' \
+      'env | sed -n "s/^\(GIT_[A-Z0-9_]*\)=.*/\1/p" >> "${BAIT_LOG}"' \
+      'inner="$(mktemp -d "${BAIT_LOG}.inner.XXXXXX")"' \
+      'cd "${inner}" && git init -q && git config bait.poisoned yes' \
+      'echo "seen hooksPath=$(git config --get core.hooksPath) env=$(git config --get bait.env)" >> "${BAIT_LOG}"' \
+      'exit 0' > "${bait}/scripts/${s}.sh"
+  done
+  g() { git -c core.hooksPath=/dev/null -c user.name=smoke -c user.email=smoke@example.invalid -c commit.gpgsign=false "$@"; }
+  g -C "${bait}" init -q
+  g -C "${bait}" add -A
+  g -C "${bait}" commit -q -m base
+  g -C "${bait}" worktree add -q -b wt "${PC_SANDBOX}/wt"
+  cd "${PC_SANDBOX}/wt"
+  echo x > f
+  g add f
+  BAIT_LOG="${PC_SANDBOX}/env.log" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=bait.env GIT_CONFIG_VALUE_0=yes \
+    git -c core.hooksPath="${bait}/.githooks" -c user.name=smoke \
+    -c user.email=smoke@example.invalid -c commit.gpgsign=false commit -q -m wt >/dev/null 2>&1
+)
+pc_run >/dev/null 2>&1
+PC_RC=$?
+PC_LEAKED=""
+for v in ${PC_GIT_VARS}; do
+  grep -qx "${v}" "${PC_SANDBOX}/env.log" 2>/dev/null && PC_LEAKED="${PC_LEAKED} ${v}"
+done
+PC_RAN="$(grep -c '^ran$' "${PC_SANDBOX}/env.log" 2>/dev/null || true)"
+PC_POISONED=no
+grep -q poisoned "${PC_SANDBOX}/bait/.git/config" 2>/dev/null && PC_POISONED=yes
+PC_SEEN="$(grep -c '^seen hooksPath= env=$' "${PC_SANDBOX}/env.log" 2>/dev/null || true)"
+if [ "${PC_RC}" = "0" ] && [ "${PC_RAN}" = "4" ] && [ -z "${PC_LEAKED}" ] && [ "${PC_POISONED}" = "no" ] &&
+   [ "${PC_SEEN}" = "4" ]; then
+  fm_pass
+else
+  fm_fail "⑦: pre-commit이 git 환경을 스위트에 넘김 (커밋 rc=${PC_RC}, stub 실행 ${PC_RAN:-0}/4, 누출:${PC_LEAKED:- 없음}, 미끼 .git/config 오염: ${PC_POISONED}, 샌드박스가 -c·GIT_CONFIG_COUNT 설정을 보지 않은 stub ${PC_SEEN:-0}/4)"
+fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if [ "$FAIL_COUNT" -eq 0 ]; then

@@ -13,9 +13,11 @@
 #                    PROGRESS.md's 「회차」 table whose order cell equals the
 #                    file-name stem and whose 반환 cell is not empty (main
 #                    moves their returned message there; the tier line alone
-#                    buys nothing); every output has an order. Limit: an
-#                    executor-max order written as `- tier: reviewer-high`
-#                    with such a row passes, since both pin opus·high.
+#                    buys nothing; see progress_returned for what counts as
+#                    the table and as empty); every output has an order.
+#                    Limit: an executor-max order written as
+#                    `- tier: reviewer-high` with such a row passes, since
+#                    both pin opus·high.
 #   - order-filename / output-filename: orders/ and outputs/ hold only
 #                    NN-<name>.md files (dotfiles aside); anything else
 #                    (.MD, .txt, broken symlinks, ...) fails instead of being
@@ -75,16 +77,36 @@ fail() { echo "FAIL $*"; fails=$((fails + 1)); }
 
 # progress_returned <stem> — PROGRESS.md's 「회차」 table (columns as in
 # templates/PROGRESS.md: 회차 | order | 반환 | ...) has a row whose order
-# cell is exactly <stem> and whose 반환 cell is not empty.
+# cell is exactly <stem> and whose 반환 cell is not empty. The section runs
+# from `## 회차` to the next `#`/`##` heading; rows under a `###` or deeper
+# subsection and lines inside ``` or ~~~ fences do not count. A 반환 cell
+# made only of whitespace (U+3000 too), -, —, 없음, (대기), 대기 and HTML
+# comments is empty.
 progress_returned() {
   [ -f "$dir/PROGRESS.md" ] &&
     STEM="$1" awk -F'|' '
-      /^## / { insec = ($0 ~ /^## 회차[[:space:]]*$/); next }
-      !insec || $0 !~ /^[[:space:]]*\|/ { next }
+      { t = $0; sub(/^(   |  | )/, "", t) }  # up to 3 spaces of indent
+      fn {
+        if (substr(t, 1, 1) == fc && match(t, /^(`+|~+)[[:space:]]*$/) &&
+            match(t, /^(`+|~+)/) && RLENGTH >= fn) fn = 0
+        next
+      }
+      match(t, /^(```+|~~~+)/) { fc = substr(t, 1, 1); fn = RLENGTH; next }
+      match(t, /^#+([[:space:]]|$)/) {
+        if (match(t, /^#+/) && RLENGTH <= 2) {
+          insec = (t ~ /^## 회차[[:space:]]*$/); insub = 0
+        } else insub = 1
+        next
+      }
+      !insec || insub || $0 !~ /^[[:space:]]*\|/ { next }
       {
         o = $3; r = $4
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", o)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", r)
+        while ((i = index(r, "<!--")) > 0) {
+          j = index(substr(r, i + 4), "-->")
+          r = substr(r, 1, i - 1) (j ? substr(r, i + 4 + j + 2) : "")
+        }
+        gsub(/\(대기\)|대기|없음|—|-|　|[[:space:]]/, "", r)
         if (o == ENVIRON["STEM"] && r != "") { found = 1; exit }
       }
       END { exit !found }' "$dir/PROGRESS.md"

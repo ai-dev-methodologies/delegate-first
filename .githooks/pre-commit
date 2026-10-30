@@ -14,6 +14,20 @@ set -u
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." && pwd))"
 
+# git이 hook에 넘긴 환경 변수(GIT_DIR·GIT_INDEX_FILE 등)를 스위트에 물려주지 않는다.
+# 물려주면 스위트 안의 샌드박스 git 명령이 커밋 중인 레포를 가리켜 공통
+# .git/config를 고친다(worktree 커밋에서 실측). `git -c`(GIT_CONFIG_PARAMETERS)와
+# GIT_CONFIG_COUNT·GIT_CONFIG_KEY_n·GIT_CONFIG_VALUE_n 설정도 지운다. 남기면 샌드박스
+# git이 그 설정(예 core.hooksPath)을 물려받는다. 레포 루트는 위에서 먼저 구했다.
+# 이 목록은 scripts/test-delegate-scripts.sh isolate_git_env와 같은 집합이다.
+# 회귀 검사: scripts/smoke-hook.sh ⑦.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX \
+  GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+for git_cfg_var in $(env | sed -n 's/^\(GIT_CONFIG_[A-Z]*_[0-9][0-9]*\)=.*/\1/p'); do
+  unset "${git_cfg_var}"
+done
+
 echo "[pre-commit] scripts/lint-delegate-first.py --strict 실행..."
 # B-10: --strict는 드리프트류 WARN(pinned↔agents 불일치, model 있는데 effort
 # 없음 등)만 커밋을 막고, 위임 로그의 '(리뷰 대기)' 미마감 같은 워크플로류
@@ -41,8 +55,13 @@ echo "[pre-commit] scripts/test-reinstall.sh 실행(reinstall.sh 샌드박스 �
 bash "$REPO_ROOT/scripts/test-reinstall.sh"
 TEST_REINSTALL_STATUS=$?
 
-if [ "$LINT_STATUS" -ne 0 ] || [ "$TEST_LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ] || [ "$TEST_REINSTALL_STATUS" -ne 0 ]; then
-  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, test-lint exit=$TEST_LINT_STATUS, smoke exit=$SMOKE_STATUS, test-reinstall exit=$TEST_REINSTALL_STATUS. 커밋을 막습니다." >&2
+# v2 작업 디렉터리 스크립트(new-task.sh·close-task.sh)의 샌드박스 회귀망.
+echo "[pre-commit] scripts/test-delegate-scripts.sh 실행(new-task.sh·close-task.sh 샌드박스 회귀)..."
+/bin/bash "$REPO_ROOT/scripts/test-delegate-scripts.sh"
+TEST_DELEGATE_STATUS=$?
+
+if [ "$LINT_STATUS" -ne 0 ] || [ "$TEST_LINT_STATUS" -ne 0 ] || [ "$SMOKE_STATUS" -ne 0 ] || [ "$TEST_REINSTALL_STATUS" -ne 0 ] || [ "$TEST_DELEGATE_STATUS" -ne 0 ]; then
+  echo "[pre-commit] 실패 — lint exit=$LINT_STATUS, test-lint exit=$TEST_LINT_STATUS, smoke exit=$SMOKE_STATUS, test-reinstall exit=$TEST_REINSTALL_STATUS, test-delegate-scripts exit=$TEST_DELEGATE_STATUS. 커밋을 막습니다." >&2
   exit 1
 fi
 

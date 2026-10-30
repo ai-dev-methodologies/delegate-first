@@ -29,7 +29,7 @@ BASE_HOOK="$SCRATCH/base_hook.cjs"
 BASE_LOG="$SCRATCH/base_log.md"
 mkdir -p "$BASE_AGENTS"
 cp "$REPO_ROOT"/.claude/agents/*.md "$BASE_AGENTS"/
-cp "$REPO_ROOT"/.claude/hooks/enforce-subagent-model.cjs "$BASE_HOOK"
+cp "$REPO_ROOT"/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs "$BASE_HOOK"
 cp "$REPO_ROOT"/docs/handoff/delegation-log.md "$BASE_LOG"
 
 PASS_COUNT=0

@@ -32,9 +32,9 @@
 #
 # Case 27 (P3) and caseF3 are install-path regression locks kept from the
 # P5 followup round (deploy-readiness adversarial review round 2): caseF3
-# covers the §0 advisory branch that used to print nothing at all about
-# hook registration on a completely fresh machine (rc=0, silent
-# half-install); case27 covers §1's `[ -d ]` backup check misreading a
+# covers the §4 skill-hook check (SKILL.md frontmatter hooks + hook file in
+# the skill dir, 결정 ③) that must not stay silent on a hookless install
+# (rc=0, silent half-install); case27 covers §1's `[ -d ]` backup check misreading a
 # regular file at the skill path as "nothing to back up", which used to let
 # the swap silently destroy that file with no backup and a false "재설치
 # 완료" log.
@@ -380,6 +380,21 @@ echo
   if [ "$ok" -eq 1 ]; then record "case10_no_propagate_by_default" PASS; else record "case10_no_propagate_by_default" FAIL "$detail"; fi
 }
 
+# --- Case 17: --propagate-global copies the rule only; the hook ships inside
+# the skill dir (SKILL.md frontmatter hooks, 결정 ③) — no $HOME/.claude/hooks copy ---
+{
+  d="$(case_dir case17_propagate)"; detail=""
+  build_basic_dst "$d/dst"
+  out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes --propagate-global 2>&1)"
+  rc=$?
+  ok=1
+  [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc out=$out"; }
+  cmp -s "$d/home/.claude/rules/subagent-model-routing.md" "$REPO_ROOT/.claude/rules/subagent-model-routing.md" || { ok=0; detail="${detail:-global rule not propagated}"; }
+  [ ! -e "$d/home/.claude/hooks/enforce-subagent-model.cjs" ] || { ok=0; detail="${detail:-legacy global hook copy created}"; }
+  cmp -s "$d/dst/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs" "$REPO_ROOT/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs" || { ok=0; detail="${detail:-hook not installed inside skill dir}"; }
+  if [ "$ok" -eq 1 ]; then record "case17_propagate_rule_only_hook_in_skill" PASS; else record "case17_propagate_rule_only_hook_in_skill" FAIL "$detail"; fi
+}
+
 # --- Case 11: canonical gains a brand-new top-level file, dst has none by
 # that name -> reinstall installs it with canonical content (proves $NEW
 # construction is not hardcoded to "SKILL.md"/"references" only) ---
@@ -569,38 +584,115 @@ echo
   fi
 }
 
-# --- Case F3 (F-3 regression): a completely fresh machine — settings.json
-# missing from BOTH the global path ($home/.claude/settings.json) and the
-# project path ($dst/.claude/settings.json) — must print the "반쪽 설치"
-# hook-registration warning instead of the §0 advisory section going
-# entirely silent. Empty $home (case_dir's bare "home" dir has no
-# .claude/settings.json) + a $dst with no .claude at all (case_dir's bare
-# "dst" dir — no project settings.json either) reproduces exactly the
-# scenario the F-3 fix targets. ---
+# --- Case F3 (결정 ③): the hook is registered by SKILL.md frontmatter, not
+# settings.json, so an absent settings.json is normal and must NOT warn.
+# What must be verified instead is the installed skill: frontmatter `hooks:`
+# plus hooks/enforce-subagent-model.cjs inside the skill dir. (a) the real
+# canonical repo on a machine with no settings.json anywhere -> OK line, no
+# settings.json warning; (b) a canonical fixture whose SKILL.md carries no
+# hooks -> warning line, rc 0. Non-vacuity: against the broken copy with the
+# F3-GUARD region stripped, scenario (b) prints no hook warning at all while
+# the script still exits 0 — the silent half-install symptom. ---
 {
   d="$(case_dir caseF3)"
   out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --yes 2>&1)"
   rc=$?
   ok=1
   [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc out=$out"; }
-  echo "$out" | grep -qF "settings.json을 전역" || { ok=0; detail="missing F-3 half-install hook warning when settings.json absent everywhere"; }
-  if [ "$ok" -eq 1 ]; then record "caseF3_settings_json_absent_warns" PASS; else record "caseF3_settings_json_absent_warns" FAIL "$detail"; fi
-  # Non-vacuity: against the deletion-type broken copy (the F3-GUARD region
-  # — the entire else-branch body — stripped out, reproducing the exact
-  # pre-fix code, which had no else branch at all for this condition), the
-  # warning must be completely absent from output while the script still
-  # exits 0 — the actual pre-fix "silent half install" symptom: this one
-  # §0 advisory branch emits zero lines about hook registration and the
-  # script still reports success.
+  echo "$out" | grep -qF "OK: 스킬 훅" || { ok=0; detail="${detail:-missing OK line for skill-embedded hook}"; }
+  echo "$out" | grep -qF "settings.json" && { ok=0; detail="${detail:-settings.json absence must not be mentioned (결정 ③)}"; }
+  [ -f "$d/dst/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs" ] || { ok=0; detail="${detail:-hook file not installed inside skill dir}"; }
+  if [ "$ok" -eq 1 ]; then record "caseF3_skill_hook_verified_no_settings_needed" PASS; else record "caseF3_skill_hook_verified_no_settings_needed" FAIL "$detail"; fi
   if [ "$ok" -eq 1 ]; then
+    d1="$(case_dir caseF3_nohook)"
+    build_fixture_src "$d1/src"
+    out1="$(run_reinstall "$d1/home" --src "$d1/src" --dst "$d1/dst" --yes 2>&1)"
+    rc1=$?
+    w_ok=0
+    [ "$rc1" -eq 0 ] && echo "$out1" | grep -qF "경고: 스킬 훅" && w_ok=1
+    if [ "$w_ok" -eq 1 ]; then record "caseF3_hookless_skill_warns" PASS; else record "caseF3_hookless_skill_warns" FAIL "hookless installed skill did not warn (rc=$rc1 out=[$out1])"; fi
     d2="$(case_dir caseF3_vac)"
-    out2="$(run_broken "$BROKEN_F3" "$d2/home" --src "$REPO_ROOT" --dst "$d2/dst" --yes 2>&1)"
+    build_fixture_src "$d2/src"
+    out2="$(run_broken "$BROKEN_F3" "$d2/home" --src "$d2/src" --dst "$d2/dst" --yes 2>&1)"
     rc2=$?
     vac_ok=0
-    if [ "$rc2" -eq 0 ] && ! echo "$out2" | grep -qF "settings.json을 전역"; then
+    if [ "$rc2" -eq 0 ] && ! echo "$out2" | grep -qF "스킬 훅"; then
       vac_ok=1
     fi
-    if [ "$vac_ok" -eq 1 ]; then record "caseF3_nonvacuous_broken_f3_reproduces_bug" PASS; else record "caseF3_nonvacuous_broken_f3_reproduces_bug" FAIL "broken-f3 copy did not reproduce the pre-fix silent half-install symptom (rc2=$rc2 out2=[$out2])"; fi
+    if [ "$vac_ok" -eq 1 ]; then record "caseF3_nonvacuous_broken_f3_reproduces_bug" PASS; else record "caseF3_nonvacuous_broken_f3_reproduces_bug" FAIL "broken-f3 copy did not reproduce the silent hookless install (rc2=$rc2 out2=[$out2])"; fi
+  fi
+}
+
+# --- Case F3 frontmatter shapes: the hook file is present in every fixture
+# below, so only the SKILL.md frontmatter decides. A frontmatter with no
+# closing `---`, `hooks: {}`, and a `hooks:` key with no indented entries all
+# register nothing and must warn, not print the OK line. ---
+f3_shape_case() {
+  local name="$1" body="$2"
+  local d
+  d="$(case_dir "$name")"
+  build_fixture_src "$d/src"
+  mkdir -p "$d/src/.claude/skills/delegate-first/hooks"
+  echo "// hook" > "$d/src/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"
+  printf '%b' "$body" > "$d/src/.claude/skills/delegate-first/SKILL.md"
+  out="$(run_reinstall "$d/home" --src "$d/src" --dst "$d/dst" --yes 2>&1)"
+  rc=$?
+  if [ "$rc" -eq 0 ] && echo "$out" | grep -qF "경고: 스킬 훅" && ! echo "$out" | grep -qF "OK: 스킬 훅"; then
+    record "$name" PASS
+  else
+    record "$name" FAIL "frontmatter shape did not warn (rc=$rc out=[$out])"
+  fi
+}
+f3_shape_case caseF3_unclosed_frontmatter_warns '---\nname: x\nhooks:\n  PreToolUse:\n    - matcher: "Agent"\n'
+f3_shape_case caseF3_empty_braces_hooks_warns '---\nname: x\nhooks: {}\n---\nbody\n'
+f3_shape_case caseF3_empty_block_hooks_warns '---\nname: x\nhooks:\n---\nbody\n'
+
+# --- Case OLDREG (결정 ③): a leftover settings.json registration of the hook
+# (global $REINSTALL_HOME/.claude/settings.json·settings.local.json or the
+# target project's .claude/settings.json·settings.local.json) makes skill sessions run the hook twice, with the
+# stale copy also judging. §0 must name each file that still mentions
+# enforce-subagent-model, and stay silent when neither does. ---
+{
+  d="$(case_dir caseOldReg_present)"
+  mkdir -p "$d/home/.claude" "$d/dst/.claude"
+  echo '{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"node ~/.claude/hooks/enforce-subagent-model.cjs"}]}]}}' > "$d/home/.claude/settings.json"
+  echo '{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"node .claude/hooks/enforce-subagent-model.cjs"}]}]}}' > "$d/dst/.claude/settings.json"
+  out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+  rc=$?
+  ok=1; detail=""
+  [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc"; }
+  echo "$out" | grep -F "옛 settings 훅 등록" | grep -qF "$d/home/.claude/settings.json" || { ok=0; detail="${detail:-no warning naming the global settings.json} out=[$out]"; }
+  echo "$out" | grep -F "옛 settings 훅 등록" | grep -qF "$d/dst/.claude/settings.json" || { ok=0; detail="${detail:-no warning naming the project settings.json} out=[$out]"; }
+  if [ "$ok" -eq 1 ]; then record "caseOldReg_present_warns" PASS; else record "caseOldReg_present_warns" FAIL "$detail"; fi
+
+  # settings.local.json도 Claude Code가 읽는 등록처라 같은 경고 대상이다.
+  d="$(case_dir caseOldReg_local)"
+  mkdir -p "$d/home/.claude" "$d/dst/.claude"
+  echo '{}' > "$d/home/.claude/settings.json"
+  echo '{}' > "$d/dst/.claude/settings.json"
+  echo '{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"node ~/.claude/hooks/enforce-subagent-model.cjs"}]}]}}' > "$d/home/.claude/settings.local.json"
+  echo '{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"node .claude/hooks/enforce-subagent-model.cjs"}]}]}}' > "$d/dst/.claude/settings.local.json"
+  out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+  rc=$?
+  ok=1; detail=""
+  [ "$rc" -eq 0 ] || { ok=0; detail="exit=$rc"; }
+  echo "$out" | grep -F "옛 settings 훅 등록" | grep -qF "$d/home/.claude/settings.local.json" || { ok=0; detail="${detail:-no warning naming the global settings.local.json} out=[$out]"; }
+  echo "$out" | grep -F "옛 settings 훅 등록" | grep -qF "$d/dst/.claude/settings.local.json" || { ok=0; detail="${detail:-no warning naming the project settings.local.json} out=[$out]"; }
+  echo "$out" | grep -F "옛 settings 훅 등록" | grep -qE "settings\.json\$" && { ok=0; detail="${detail:-warned about a clean settings.json} out=[$out]"; }
+  if [ "$ok" -eq 1 ]; then record "caseOldReg_local_warns" PASS; else record "caseOldReg_local_warns" FAIL "$detail"; fi
+
+  d="$(case_dir caseOldReg_absent)"
+  mkdir -p "$d/home/.claude" "$d/dst/.claude"
+  echo '{}' > "$d/home/.claude/settings.json"
+  echo '{}' > "$d/dst/.claude/settings.json"
+  echo '{}' > "$d/home/.claude/settings.local.json"
+  echo '{}' > "$d/dst/.claude/settings.local.json"
+  out="$(run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+  rc=$?
+  if [ "$rc" -eq 0 ] && ! echo "$out" | grep -qF "옛 settings 훅 등록"; then
+    record "caseOldReg_absent_silent" PASS
+  else
+    record "caseOldReg_absent_silent" FAIL "warned without a leftover registration (rc=$rc out=[$out])"
   fi
 }
 

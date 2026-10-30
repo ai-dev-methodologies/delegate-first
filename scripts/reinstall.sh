@@ -12,8 +12,10 @@
 #
 # One deliberate deviation from the manual doc, explicitly required by the
 # task that produced this script (not invented here):
-#   1. Global hook/rule propagation defaults OFF. Use --propagate-global to
-#      do what docs/REINSTALL.md §3's last two `cp` lines do unconditionally.
+#   1. Global rule propagation defaults OFF. Use --propagate-global to
+#      do what docs/REINSTALL.md §3's rule `cp` line does unconditionally.
+#      The hook ships inside the skill dir (SKILL.md frontmatter hooks), so
+#      there is no global hook copy any more.
 # Everything else (skill swap, tier agent copy, backup layout, succession
 # rules, interrupted-reinstall guard) matches the doc exactly.
 #
@@ -80,7 +82,7 @@ Usage:
   --yes                 Skip the confirmation prompt before destructive
                          steps (required for unattended runs; without it,
                          a non-interactive shell aborts instead of hanging).
-  --propagate-global    Also copy the canonical hook/rule file to
+  --propagate-global    Also copy the canonical rule file to
                          $REINSTALL_HOME/.claude (default: $HOME/.claude).
                          Off by default — global changes have a different
                          blast radius than one project's local files.
@@ -224,24 +226,17 @@ if [ "$RESOLVED_SRC" = "$RESOLVED_DST" ]; then
   exit 1
 fi
 
-# §0 advisory checks (informational only — never block; matches the doc's
-# own framing that these interpret results rather than gate execution).
-if [ -f "$GLOBAL_ROOT/.claude/settings.json" ] || [ -f "$DST/.claude/settings.json" ]; then
-  if grep -qs "enforce-subagent-model" "$GLOBAL_ROOT/.claude/settings.json" "$DST/.claude/settings.json" 2>/dev/null; then
-    log "정보: 훅 등록 흔적 확인됨(전역 또는 프로젝트 settings.json)"
-  else
-    log "정보: enforce-subagent-model 훅 등록을 settings.json에서 찾지 못했다 — §4-2 스모크 해석 시 참고할 것"
+# §0 advisory: 훅은 SKILL.md frontmatter hooks로 등록된다(결정 ③). settings.json
+# 등록은 필요 없으므로 그 부재를 경고하지 않는다. 설치된 스킬의 훅 확인은 §4에서 한다.
+# 반대로 옛 settings.json·settings.local.json 등록이 남아 있으면 경고한다. 그 등록은
+# 이 스크립트가 지우지 않는다(전역 설정은 사람이 정리한다).
+for settings_file in "$GLOBAL_ROOT/.claude/settings.json" "$GLOBAL_ROOT/.claude/settings.local.json" \
+  "$DST/.claude/settings.json" "$DST/.claude/settings.local.json"; do
+  if [ -f "$settings_file" ] && grep -q "enforce-subagent-model" "$settings_file"; then
+    err "경고: 옛 settings 훅 등록(enforce-subagent-model)이 남아 있다: $settings_file"
+    err "  스킬 호출 세션에서 훅이 이중 실행되고 낡은 사본도 판정에 참여한다. 이 파일에서 그 등록을 지운다."
   fi
-# F3-GUARD-START
-else
-  # F-3: settings.json이 전역/프로젝트 어디에도 없는 완전 신규 머신에서는
-  # 위 두 분기 모두 스킵되어 훅 등록에 대한 언급이 한 줄도 나오지 않는다
-  # — "재설치 완료" 로그와 함께 강제(PreToolUse 차단)가 발효되지 않은
-  # 반쪽 설치가 조용히 끝난다. README.md §설치와 동일한 사실을 여기서도
-  # 명시적으로 경고한다.
-  log "경고: settings.json을 전역($GLOBAL_ROOT/.claude/settings.json)/프로젝트($DST/.claude/settings.json) 어디서도 찾지 못했다 — 이 스크립트는 skills + tier 에이전트만 설치하며 훅 파일도 settings.json 등록도 하지 않는다. README.md §설치의 '훅을 별도로 등록한다' 단계를 수행하지 않으면 강제(PreToolUse 차단)가 발효되지 않은 반쪽 설치로 남는다."
-# F3-GUARD-END
-fi
+done
 if [ -d "$DST/.claude/agents" ]; then
   for agent in "${TIER_AGENTS[@]}"; do
     f="$DST/.claude/agents/$agent.md"
@@ -297,7 +292,7 @@ log "백업 위치(예정): $BAK"
 log "교체 대상: $DST_SKILL_DIR (통째로 스왑)"
 log "교체 대상: $DST/.claude/agents/{${TIER_AGENTS[*]// /,}}.md"
 if [ "$PROPAGATE_GLOBAL" -eq 1 ]; then
-  log "전역 전파 대상: $HOOKS_TARGET_DIR/$HOOK_FILE_NAME, $RULES_TARGET_DIR/$RULE_FILE_NAME"
+  log "전역 전파 대상: $RULES_TARGET_DIR/$RULE_FILE_NAME (훅은 스킬 디렉터리에 포함되어 설치된다)"
 else
   log "전역 전파: 생략(--propagate-global 없음)"
 fi
@@ -426,12 +421,11 @@ log "tier 에이전트 6종 교체 완료"
 
 # --- 전역 전파 (기본 비활성) ---
 if [ "$PROPAGATE_GLOBAL" -eq 1 ]; then
-  mkdir -p "$RULES_TARGET_DIR" "$HOOKS_TARGET_DIR"
+  mkdir -p "$RULES_TARGET_DIR"
   cp "$SRC/.claude/rules/$RULE_FILE_NAME" "$RULES_TARGET_DIR/$RULE_FILE_NAME"
-  cp "$SRC/.claude/hooks/$HOOK_FILE_NAME" "$HOOKS_TARGET_DIR/$HOOK_FILE_NAME"
-  log "전역 훅/규칙 전파 완료: $HOOKS_TARGET_DIR/$HOOK_FILE_NAME, $RULES_TARGET_DIR/$RULE_FILE_NAME"
+  log "전역 규칙 전파 완료: $RULES_TARGET_DIR/$RULE_FILE_NAME"
 else
-  log "전역 훅/규칙 전파 생략(--propagate-global 없음) — $GLOBAL_ROOT/.claude 는 건드리지 않았다"
+  log "전역 규칙 전파 생략(--propagate-global 없음) — $GLOBAL_ROOT/.claude 는 건드리지 않았다"
 fi
 
 # --- §4 검증: 스크립트가 헤드리스로 할 수 있는 것만 자동 확인 ---
@@ -441,6 +435,24 @@ if diff -q "$DST_SKILL_DIR/SKILL.md" "$SKILL_SRC_DIR/SKILL.md" >/dev/null 2>&1; 
 else
   err "경고: SKILL.md가 정본과 다르다 — 교체가 실패했을 수 있다"
 fi
+# F3-GUARD-START
+# F-3(결정 ③): 훅은 SKILL.md frontmatter hooks로 등록되고 훅 파일은 스킬
+# 디렉터리 안에 산다. 둘 중 하나라도 빠지면 강제(PreToolUse 차단)가 발효되지
+# 않는 반쪽 설치가 조용히 끝나므로 여기서 명시적으로 경고한다.
+# frontmatter는 닫는 `---`가 있어야 하고, `hooks:` 아래에 들여쓴 항목이 하나
+# 이상 있어야 등록으로 본다(`hooks: {}`·빈 `hooks:`·닫히지 않은 frontmatter는 없음).
+if awk 'NR==1 { if ($0!="---") exit 1; next }
+     $0=="---" { closed=1; exit }
+     /^hooks:[[:space:]]*$/ { inh=1; next }
+     inh && /^[[:space:]]+[^[:space:]#]/ { f=1 }
+     /^[^[:space:]]/ { inh=0 }
+     END { exit !(closed && f) }' "$DST_SKILL_DIR/SKILL.md" 2>/dev/null \
+   && [ -f "$DST_SKILL_DIR/hooks/$HOOK_FILE_NAME" ]; then
+  log "OK: 스킬 훅 확인됨(SKILL.md frontmatter hooks + hooks/$HOOK_FILE_NAME)"
+else
+  err "경고: 스킬 훅이 불완전하다 — 설치된 SKILL.md frontmatter에 hooks가 없거나 $DST_SKILL_DIR/hooks/$HOOK_FILE_NAME 가 없다. 이대로면 강제(PreToolUse 차단)가 발효되지 않은 반쪽 설치다. 정본 레포를 확인하고 다시 설치한다."
+fi
+# F3-GUARD-END
 AGENT_MISMATCH=0
 for agent in "${TIER_AGENTS[@]}"; do
   if ! diff -q "$DST/.claude/agents/$agent.md" "$SRC/.claude/agents/$agent.md" >/dev/null 2>&1; then
@@ -461,7 +473,7 @@ fi
 log "=== 수동 확인 필요 (이 스크립트가 자동화할 수 없음 — 실행 중인 세션 필요) ==="
 log "1. 대상 프로젝트 세션에서 /delegate-first 호출 → SKILL.md 로드 확인"
 log "2. model 없이 Agent 즉석 호출 → 훅이 exit 2로 차단하는지 확인"
-log "3. subagent_type: explorer-low 를 핀 값(model haiku·effort low)과 이름(name smoke-haiku-low)으로 명시해 호출 → 통과, model·effort·name 중 하나를 빼면 exit 2(정상)"
+log "3. subagent_type: explorer-low 를 핀 값(model haiku·effort low)으로 명시해 호출 → 통과, model·effort 중 하나를 빼면 exit 2(정상). 이름 규약(B-18)은 훅이 아니라 close-task.sh 사후 검사가 맡는다"
 log "백업 위치(참고용 사본, 자동 복원 없음): $BAK"
 log "문제가 생기면: 정본 레포를 원하는 커밋으로 checkout한 뒤 이 스크립트를 다시 실행하라(docs/REINSTALL.md §5 참고)."
 log "재설치 완료."

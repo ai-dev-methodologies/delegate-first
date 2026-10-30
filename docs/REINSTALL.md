@@ -9,9 +9,9 @@
 ./scripts/reinstall.sh --src "/PATH/TO/정본레포" --dst "/PATH/TO/대상프로젝트" --yes       # 2. 실제 실행
 ```
 
-> `--rollback`은 없다. 문제가 생기면 §5를 따른다 — 복구는 별도 복원 기계가 아니라 정본을 원하는 커밋으로 되돌려 다시 설치하는 것이다. 전역 훅·규칙 전파는 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 `--propagate-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§3의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
+> `--rollback`은 없다. 문제가 생기면 §5를 따른다 — 복구는 별도 복원 기계가 아니라 정본을 원하는 커밋으로 되돌려 다시 설치하는 것이다. 전역 규칙 전파는 기본 비활성이다(blast radius가 프로젝트 로컬과 다르므로) — 필요하면 `--propagate-global`을 명시한다. 스크립트가 없는 환경이거나 스크립트 자체를 디버깅해야 할 때만 아래 수동 절차를 직접 따른다 — **이 경우 아래 각 단계에 적힌 함정(§2~§3의 "실측"·"경고" 문단)을 스스로 지켜야 한다**, 스크립트는 이를 코드로 대신 지켜준다. 문서 절차를 바꾸면 `scripts/reinstall.sh`와 `scripts/test-reinstall.sh`도 함께 갱신해 둘이 갈라지지 않게 한다.
 
-전역(`~/.claude`)에 새 tier(예: 2026-10-30 `executor-max`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙·훅만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
+전역(`~/.claude`)에 새 tier(예: 2026-10-30 `executor-max`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
 
 > **실행 승인 게이트**: 이 절차는 **사용자 명시 승인 후에만** 실행한다(스크립트 경로든 수동 경로든 동일). 대상 프로젝트의 로컬 스킬은 **의도적으로 git 추적 밖(untracked)** 이라 되돌릴 git 히스토리가 없다 — 백업(1단계)을 건너뛰면 복구 수단이 없다.
 
@@ -33,8 +33,8 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 | 정본 PR 머지 완료 | `git -C <정본레포> log --oneline -1 main` | 이관 PR이 main에 있음 |
 | 대상 프로젝트 경로 | — | `/Users/plletdata/dev/goone-rest` |
 | 로컬 사본 존재 | `ls <대상>/.claude/skills/delegate-first` | SKILL.md, references/, HANDOFF.md, NEW-REPO-PROMPT.md |
-| 훅 위치 | `ls ~/.claude/hooks/enforce-subagent-model.cjs` | 존재(전역 설치) |
-| 훅 등록 위치 | `grep -n "enforce-subagent-model" ~/.claude/settings.json "$DST/.claude/settings.json" 2>/dev/null` | 전역(`~/.claude/settings.json`)에 등록돼 있으면 전역 유지 / 대상 프로젝트 `.claude/settings.json`으로 전환하려면 그쪽에 등록 — 둘 다 없으면 §4의 2번(훅 차단 스모크)이 실패한다. 이 표의 판정이 §4-2번의 전제다. |
+| 훅 위치 | `ls "$DST/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs"` | 재설치 뒤 존재(스킬 디렉터리 안). 재설치 전에는 없을 수 있다 |
+| 훅 등록 위치 | `grep -n "enforce-subagent-model" ~/.claude/settings.json "$DST/.claude/settings.json" 2>/dev/null` | 출력 0건. 등록은 설치된 `SKILL.md` frontmatter `hooks`가 맡고, 훅은 스킬을 호출한 세션에서만 켜진다. 옛 등록이 남아 있으면 스킬 호출 세션에서 훅이 이중 실행되므로 그 등록을 지운다(`scripts/reinstall.sh`도 경고한다). 이 표의 판정이 §4-2번의 전제다. |
 | 동명 에이전트 model 핀 확인 | `grep -L '^model:' "$DST"/.claude/agents/{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md` | 출력 0건(모두 model 핀 보유). 핀이 없는 동명 에이전트가 있으면 훅의 tier 기대값(model·effort) 검사와 어긋나 그 이름의 정상 호출이 exit 2로 막히거나, 정의 핀과 훅 기대값이 갈라진다. 훅은 생략 호출을 통과시키지 않으므로 상속 구멍은 생기지 않는다. |
 
 ## 1. 백업 (건너뛰기 금지)
@@ -45,7 +45,7 @@ BAK="$HOME/.claude-backups/delegate-first-$STAMP"
 mkdir -p "$BAK"
 cp -R "$DST/.claude/skills/delegate-first" "$BAK/skills-delegate-first"
 cp -R "$DST/.claude/agents"               "$BAK/agents"
-cp "$HOME/.claude/hooks/enforce-subagent-model.cjs" "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상)
+# 훅은 스킬 디렉터리 hooks/ 안에 있어 위 skills-delegate-first 백업에 포함된다
 cp "$HOME/.claude/rules/subagent-model-routing.md"  "$BAK/" 2>/dev/null  # 없으면 스킵됨(정상)
 ```
 
@@ -58,7 +58,7 @@ cp "$HOME/.claude/rules/subagent-model-routing.md"  "$BAK/" 2>/dev/null  # 없�
 ```bash
 diff -ru "$DST/.claude/skills/delegate-first" "$SRC/.claude/skills/delegate-first" | head -100
 diff -ru "$DST/.claude/agents" "$SRC/.claude/agents"
-diff -u "$HOME/.claude/hooks/enforce-subagent-model.cjs" "$SRC/.claude/hooks/enforce-subagent-model.cjs"
+# 훅은 스킬 디렉터리 hooks/ 안에 있어 위 첫 줄 diff에 포함된다
 diff -u "$HOME/.claude/rules/subagent-model-routing.md"  "$SRC/.claude/rules/subagent-model-routing.md"
 ```
 
@@ -92,7 +92,7 @@ hunk 수를 세지 말고 각 hunk의 **내용**을 위 목록과 대조한다. 
 
 ### 훅 — 정본이 앞서 있음(과거 "byte-identical" 서술은 훅에는 더 이상 맞지 않음)
 
-실측(2026-08-18): `$HOME/.claude/hooks/enforce-subagent-model.cjs`(전역, 2026-07-16자 구버전)와 `$SRC/.claude/hooks/enforce-subagent-model.cjs`(정본 — tier 5종 `MODEL_PINNED_TYPES` 추가 + 공급망 서약 주석, PR#2/B-06 커밋 aab93c5) 사이에 diff가 **있다**. 과거 §2 서술("에이전트 5종·훅은 byte-identical이라 diff가 비어야 한다")은 그때는 맞았지만 이제 훅에는 맞지 않는다 — 훅은 정본이 앞서 있는 것이 B-06/B-08 이후 현재 **정상 상태**다. §3의 훅 전파 단계(`cp`)를 수행한 뒤에는 이 diff가 **비어야 한다** — 전파 후에도 diff가 있으면 멈추고 원인을 파악한다.
+실측(2026-08-18): `$HOME/.claude/hooks/enforce-subagent-model.cjs`(전역, 2026-07-16자 구버전)와 `$SRC/.claude/hooks/enforce-subagent-model.cjs`(정본 — tier 5종 `MODEL_PINNED_TYPES` 추가 + 공급망 서약 주석, PR#2/B-06 커밋 aab93c5) 사이에 diff가 **있다**. 과거 §2 서술("에이전트 5종·훅은 byte-identical이라 diff가 비어야 한다")은 그때는 맞았지만 이제 훅에는 맞지 않는다 — 훅은 정본이 앞서 있는 것이 B-06/B-08 이후 현재 **정상 상태**다. 전역 훅 사본은 더 이상 전파하지 않는다(`--propagate-global`은 규칙만 복사한다). 전역 사본이 남아 있으면 스킬 호출 세션에서 이중 실행되므로 §0의 「훅 등록 위치」 확인에 따라 지운다.
 
 ### 규칙 파일 — 정본이 앞서 있음(diff 정상)
 
@@ -202,8 +202,7 @@ cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,executor-max,r
 # 규칙 파일 (전파 — 정본에서 고친 라우팅 규칙을 설치 프로젝트/전역에도 반영. §2 참고)
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$HOME/.claude/rules/"
 
-# 훅 (전역 유지 — 내용 동일하면 이 단계는 no-op)
-cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"
+# 훅: 스킬 디렉터리 hooks/ 안에 있어 위 스왑으로 함께 설치된다. 등록은 SKILL.md frontmatter hooks가 맡는다
 ```
 
 **HANDOFF.md / NEW-REPO-PROMPT.md 처리**: 이 2개는 로컬 스킬 디렉터리에 남아 있는 이관용 문서다. 위 승계 단계가 이 둘을 포함해 정본이 제공하지 않는 기존 파일 전체를 자동으로 `$NEW`로 이관하므로, **스왑 자체로는 삭제되지 않는다**. 정본 레포가 `docs/HANDOFF-2026-08-17.md`로 이력을 보존하므로 로컬에서는 삭제해도 무방하지만, **삭제는 이 절차에서 자동으로 하지 않는다** — 지우고 싶으면 스왑 후 사용자 확인을 거쳐 별도로 지운다(스킬 로딩에는 영향 없음).
@@ -214,7 +213,7 @@ cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-
    - **2026-08-18 실행 결과**: 파일 내용으로 확인 완료 — `SKILL.md`에 파라미터 표현("for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead")과 `## Idle recovery` 절(타임박스·폴링 만료 감지·재위임)이 goone-rest 로컬 사본에 반영된 것을 확인했다.
 2. **훅 차단 스모크** — `model` 없이 Agent 즉석 호출 → exit 2 차단 + 라우팅 안내 stderr 확인. (§0의 "훅 등록 위치" 확인을 먼저 통과해야 이 스모크의 결과를 해석할 수 있다.)
    - **2026-08-18 실행 결과**: 전역 훅 대상 `scripts/smoke-hook.sh` 스모크 24/24 PASS + 실제 Agent 호출로 범용 타입(`general-purpose`)을 `model` 없이 호출 → exit 2 차단(라우팅 안내 포함) 확인.
-3. **tier 에이전트 스폰** — `subagent_type: explorer-low`를 핀 값(`model: haiku`·`effort: low`)과 규약 이름(`name: smoke-haiku-low`)으로 명시해 1회 호출 → 통과하고 haiku/low로 도는지 확인한다. 이어서 `model`·`effort`·`name` 중 하나를 빼고 호출 → exit 2 차단이 정상이다(이름은 B-18이 강제한다. 2026-10-30 원칙 5: tier도 생략 통과를 폐지했다. 정의를 아직 로드하지 못한 세션에서는 생략 호출이 세션 모델·effort를 상속하기 때문이다). **버전 불일치를 의심할 신호는 반대 방향이다** — 생략했는데 통과하거나, 핀 값을 명시했는데 막히는 경우다. 그때는 §0의 "훅 등록 위치" 확인으로 전역/프로젝트 어느 훅이 발효 중인지 확인하고, 구 버전이면 §3의 훅 전파 단계(`cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/enforce-subagent-model.cjs"`)를 다시 수행한다. 등록된 모든 훅 사본은 가산적으로 실행되고 하나라도 exit 2면 차단되므로, 전역·프로젝트 사본을 모두 갱신해야 한다. 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것.
+3. **tier 에이전트 스폰** — `subagent_type: explorer-low`를 핀 값(`model: haiku`·`effort: low`)과 규약 이름(`name: smoke-haiku-low`)으로 명시해 1회 호출 → 통과하고 haiku/low로 도는지 확인한다. 이어서 `model`·`effort` 중 하나를 빼고 호출 → exit 2 차단이 정상이다(2026-10-30 원칙 5: tier도 생략 통과를 폐지했다. 정의를 아직 로드하지 못한 세션에서는 생략 호출이 세션 모델·effort를 상속하기 때문이다). `name`은 훅이 막지 않는다. 이름 규약은 `close-task.sh`의 발주문 파일명 토큰 사후 검사와 「반환 뒤 대조」(전사 확인)가 맡는다. **버전 불일치를 의심할 신호는 반대 방향이다** — 생략했는데 통과하거나, 핀 값을 명시했는데 막히는 경우다. 그때는 §0의 "훅 등록 위치" 확인으로 옛 `settings.json` 등록이 남아 있는지 확인하고, 남아 있으면 그 등록을 지운다. 스킬 미호출·frontmatter `hooks` 누락·훅 경로 문제도 같이 본다. 설치된 스킬의 훅(`$DST/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`)이 구 버전이면 `scripts/reinstall.sh`로 다시 설치한다. 위험: 옛 전역·프로젝트 등록이 남아 있으면 그 사본이 스킬 훅과 가산적으로 함께 실행되고 하나라도 exit 2면 차단되므로, 낡은 사본도 판정에 참여한다. 방금 덮어쓴 트리를 되돌리거나 훅을 직접 손대지 말 것.
    - **(당시 동작 기록 — 2026-10-30 원칙 5로 model 생략 통과가 폐지돼 현재는 exit 2다)** **2026-08-18 실행 결과 — 해소됨(더 이상 B-06 제약으로 차단되지 않는다)**: 이제 실제로 수행 가능하며 실측으로 통과를 확인했다. 4단계 판정: ①음성 대조(사전) — `general-purpose`를 `model` 없이 호출 → 차단 ②양성 — `explorer-low`를 `model` 없이 호출 → 스폰 성공, transcript에 `model` 키 부재 + 실제 적용 모델 `claude-haiku-4-5-20251001`(frontmatter 핀 그대로) ③양성 2 — `executor-med`를 `model` 없이 호출 → 실제 모델 `claude-sonnet-5` + `effort: "medium"` 확인(model·effort 둘 다 frontmatter대로 적용) ④음성 대조(사후) — 다시 차단 확인. 세부는 [../BACKLOG.md](../BACKLOG.md) B-06 참조.
 
 추가 확인: `grep -rn "delegating-execution" "$DST/.claude"` → 결과 0건(구 명칭 잔존 없음).
@@ -233,7 +232,7 @@ git -C <정본레포> checkout main   # 되돌리기
 
 - `<원하는 커밋>`은 보통 이번 재설치 **직전**의 정본 상태 — `git -C <정본레포> log --oneline`으로 재설치 전 마지막 커밋을 찾는다.
 - §1의 백업(`$BAK`, 스크립트 경로라면 `$HOME/.claude-backups/delegate-first-<stamp>/`)은 이제 자동 복원 대상이 아니다 — 문제가 생겼을 때 사람이 직접 열어 "무엇이 바뀌었는지" 참고할 사본일 뿐이다.
-- 전역 훅·규칙(`$HOME/.claude/hooks/enforce-subagent-model.cjs`, `$HOME/.claude/rules/subagent-model-routing.md`)도 같은 모델을 따른다 — 정본을 원하는 커밋으로 되돌린 뒤 `--propagate-global`을 붙여 재설치하면 전역도 그 커밋 상태로 복구된다.
+- 전역 규칙(`$HOME/.claude/rules/subagent-model-routing.md`)도 같은 모델을 따른다 — 정본을 원하는 커밋으로 되돌린 뒤 `--propagate-global`을 붙여 재설치하면 전역도 그 커밋 상태로 복구된다.
 - 복구 후에도 §4 검증 3단계를 다시 돌려 원상 복구를 확인한다.
 
 **왜 이걸로 충분한가**: 이 스크립트가 설치하는 모든 항목은 정본 레포 워킹트리의 스냅샷이다 — "재설치"와 "복구"는 같은 연산(정본 → 대상 복사)에 커밋 선택만 다르다. 별도 백업/복원 계약을 유지할 이유가 없다.

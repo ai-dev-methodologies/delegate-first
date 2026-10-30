@@ -1,8 +1,8 @@
 # delegate-first v2 청사진
 
-이 문서는 delegate-first v2의 구조(위임 흐름·작업 디렉터리·문서 분류·강제 장치)를 소유한다. 규칙 원문은 [규칙 파일](../../.claude/rules/subagent-model-routing.md)이, 훅의 판정은 `.claude/hooks/enforce-subagent-model.cjs`가 소유한다. 이 문서는 현재 구현에 더하는 것과 바꾸는 것만 적는다.
+이 문서는 delegate-first v2의 구조(위임 흐름·작업 디렉터리·문서 분류·강제 장치)를 소유한다. 규칙 원문은 [규칙 파일](../../.claude/rules/subagent-model-routing.md)이, 훅의 판정은 `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`가 소유한다. 이 문서는 현재 구현에 더하는 것과 바꾸는 것만 적는다.
 
-이 문서의 요소는 「결정」(사용자 결정 D1~D7, 청사진 검토 결정 D8~D13) 또는 「제안」(이번 설계)으로 표시한다. 제안은 메인 판정 전에는 구현하지 않는다.
+이 문서의 요소는 「결정」(사용자 결정 D1~D7, 청사진 검토 결정 D8~D15) 또는 「제안」(이번 설계)으로 표시한다. 제안은 메인 판정 전에는 구현하지 않는다.
 
 ### 청사진 검토 결정
 
@@ -14,8 +14,10 @@
 | D11 | `reviewer-high`·`judge-max`·`explorer-low`는 `outputs/`에 쓰지 않는다. 반환은 메시지로 받고 메인이 `PROGRESS.md`에 옮긴다 | D2의 「outputs는 서브에이전트가 쓴다」를 이 세 tier에 한해 대체 |
 | D12 | 실패 정책은 「두 번째 실패에서 자동 재시도를 중단하고 상향을 판정한다」로 합친다 | - |
 | D13 | 위임 로그의 소급 행, role 칸 문구, 「전사 기준 사후 기록」 표시는 그대로 둔다 | - |
+| D14 | 훅의 활성화 범위는 delegate-first 스킬을 호출한 세션으로 한정한다(활성화 범위 ③). 훅은 `SKILL.md` frontmatter `hooks`로 등록하고 레포 `.claude/settings.json` 등록은 없앤다(`{}`). 근거는 스킬 호출 세션에서 Agent 호출에 PreToolUse 훅이 발동하고 exit 2 차단이 적용된 프로브 실측 1·2·3 PASS다. 프로브에서 command 안의 `${CLAUDE_SKILL_DIR}`은 빈 문자열이고 `${CLAUDE_PROJECT_DIR}`은 값이 있었으며, `${CLAUDE_SKILL_DIR}` 기반 command는 스크립트를 찾지 못해 127로 끝나 fail-open이 됐다. 그래서 command는 `${CLAUDE_PROJECT_DIR}` 기반으로 두고 스크립트나 node가 없으면 exit 2로 막는다(fail-closed) | - |
+| D15 | 규칙 범위는 B안으로 한다. 전역 규칙 제목의 「전 프로젝트」를 유지한다. 자동 차단은 스킬 호출 세션에서만 하고, 스킬 밖 세션에서는 모델이 지키는 규약이다. 근거는 서브에이전트가 메인 모델을 상속하는 사고가 스킬 밖에서도 똑같이 생긴다는 점이다. A안(규칙 범위를 스킬 호출 세션으로 줄임)은 강제를 늘리지 않고 스킬 밖의 보호만 없앤다. 2026-10-30 사용자 선택 | - |
 
-훅의 활성화 범위는 아직 정하지 않았다. 현재 사실과 미결 항목은 §7과 §10에 적는다.
+훅의 활성화 범위는 결정 D14로 정했다. 현재 사실은 §7에, 남은 위험은 §10 항목 14에 적는다.
 
 ## 1. 설계 원칙과 출처 표
 
@@ -146,7 +148,7 @@ Youssef 자료는 같은 검사가 두 번 실패하면 정지하라고 적는�
 
 메인이 `TASK.md`·`REFS.md`·`PROGRESS.md`·발주문을 직접 쓰는 것은 「메인은 Edit/Write를 위임한다」 원칙의 명시적 예외다. 이 문서들은 결정 내용 자체라서 서브에이전트에게 옮겨 쓰게 하면 낭비다. 훅은 메인의 직접 쓰기를 막지 않으므로 이 예외는 규약이다.
 
-Write 도구가 없는 tier(`explorer-low`, `reviewer-high`, `judge-max`)는 `outputs/`에 쓰지 않는다(결정 D11). 이 세 tier의 반환은 메시지로 받고, 메인이 요구 ID별 판정을 `PROGRESS.md` 회차 행에 옮긴다. `close-task.sh`의 짝 검사는 이 세 tier의 발주문을 면제한다.
+Write 도구가 없는 tier(`explorer-low`, `reviewer-high`, `judge-max`)는 `outputs/`에 쓰지 않는다(결정 D11). 이 세 tier의 반환은 메시지로 받고, 메인이 요구 ID별 판정을 `PROGRESS.md` 회차 행에 옮긴다. `close-task.sh`의 짝 검사는 이 세 tier의 발주문을 면제한다. 면제는 `PROGRESS.md` 회차 표에서 그 발주문 stem 행의 반환 칸이 비어 있지 않을 때만 적용한다.
 
 ### 스크립트와 템플릿 위치
 
@@ -343,8 +345,8 @@ H는 발주문 입력에 넣지 않는다. 이유는 낡은 가정이 작업자�
 | `.claude/rules/subagent-model-routing.md` | R | 전역 사본과 동기 대상 |
 | `.claude/skills/delegate-first/SKILL.md` | R | |
 | `.claude/agents/*.md` | R | 훅 map과 lint가 대조한다 |
-| `.claude/hooks/enforce-subagent-model.cjs` | R | |
-| `.claude/settings.json` | R | 훅 등록 |
+| `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs` | R | |
+| `.claude/settings.json` | R | 훅 등록 없음(`{}`, 결정 D14) |
 | `.githooks/pre-commit`, `scripts/lint-delegate-first.py` | R | 강제 장치. 제안: R로 둔다 |
 | `README.md` | G | |
 | `docs/REINSTALL.md` | G | |
@@ -433,16 +435,15 @@ ignore 모드에서는 진행 중인 작업 상태를 다른 PC로 옮기지 못
 
 ### 강제 수단 표
 
-훅은 `settings.json`의 `hooks.PreToolUse`에 matcher `Agent`로 등록돼 있을 때만 작동한다. 등록이 없으면 아래 훅 행은 규약이다.
+훅은 delegate-first 스킬을 호출한 세션에서만 작동한다(결정 D14). 등록 위치는 `SKILL.md` frontmatter `hooks`(PreToolUse, matcher `Agent`) 하나이고 레포 `.claude/settings.json`에는 등록이 없다. 스킬을 호출하지 않은 세션에서는 아래 훅 행이 규약이다.
 
-현재 등록 위치는 두 곳이다.
-
-| 설정 파일 | 실행 명령 |
+| 항목 | 내용 |
 |---|---|
-| 전역 `~/.claude/settings.json` | `node $HOME/.claude/hooks/enforce-subagent-model.cjs` |
-| 레포 `.claude/settings.json` | `node "${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs"` |
-
-활성화 범위를 어디로 둘지는 미결이다(§10 항목 14).
+| 훅 파일 | `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`. 스킬 디렉터리에 들어 있어 `reinstall.sh`가 스킬과 함께 설치한다 |
+| command 탐색 순서 | `${CLAUDE_PROJECT_DIR}/.claude/skills/delegate-first/hooks/`, 없으면 `$HOME/.claude/skills/delegate-first/hooks/` |
+| 실패 방식 | 스크립트나 node를 찾지 못하면 exit 2로 막는다(fail-closed) |
+| 사용 금지 | `${CLAUDE_SKILL_DIR}`은 command 안에서 빈 문자열이라 쓰지 않는다 |
+| 설치 검증 | `reinstall.sh`가 설치된 `SKILL.md`의 frontmatter `hooks`와 스킬 디렉터리의 훅 파일을 확인한다 |
 
 | 규칙 | 강제 수단 | 강제 시점 | 우회(break-glass) |
 |---|---|---|---|
@@ -450,7 +451,7 @@ ignore 모드에서는 진행 중인 작업 상태를 다른 PC로 옮기지 못
 | tier model 핀 일치(B-11) | 훅 | Agent 호출 | `ALLOW_TIER_MODEL_OVERRIDE=1`(사람 전용) |
 | tier effort 핀 일치(B-12) | 훅 | Agent 호출 | `ALLOW_TIER_MODEL_OVERRIDE=1`(사람 전용) |
 | fork 사유 줄 | 훅 | Agent 호출 | 없음 |
-| tier 이름 규약(B-18) | `close-task.sh`(발주문 이름)·위임 로그 lint(role 칸 이름) | 작업 종료·커밋 | 없음. 사후 검사다(결정 D8) |
+| tier 이름 규약(B-18) | `close-task.sh`(발주문 이름)·위임 로그 lint(role 칸 이름, P4 미구현) | 작업 종료·커밋 | 없음. 사후 검사다(결정 D8) |
 | 발주문·반환물 짝, 발주문 필수 칸 | `close-task.sh` | 작업 종료 | 없음. 사후 검사다(결정 D8) |
 | tier 정의와 훅 map 일치 | `lint-delegate-first.py` Check A | 커밋 | 없음. `git commit --no-verify`는 사람 전용 |
 | 위임 로그 7열 스키마 | `lint-delegate-first.py` Check B | 커밋 | 같음 |
@@ -473,7 +474,7 @@ ignore 모드에서는 진행 중인 작업 상태를 다른 PC로 옮기지 못
 | 쓰기 범위 대조 | `git diff --name-only <기준 커밋>` 과 `git ls-files --others --exclude-standard`의 합집합이 `TASK.md` 쓰기 범위와 `.delegate/<slug>/**`에 속해야 한다 |
 | 집합 일치 | `TASK.md` ID 집합, `PROGRESS.md` 최종 회차의 ID 집합, 검수 판정의 ID 집합이 같아야 한다 |
 | 완료 | 모든 ID가 `done`이고 증거 칸이 비어 있지 않아야 한다 |
-| 짝 검사 | 발주문마다 같은 이름의 반환물이 있어야 한다. `- tier:` 줄이 `explorer-low`·`reviewer-high`·`judge-max`인 발주문은 면제한다(결정 D11) |
+| 짝 검사 | 발주문마다 같은 이름의 반환물이 있어야 한다. `- tier:` 줄이 `explorer-low`·`reviewer-high`·`judge-max`인 발주문은 `PROGRESS.md` 회차 표에서 그 발주문 stem 행의 반환 칸이 비어 있지 않을 때만 면제한다(결정 D11) |
 | 필수 칸 | 발주문마다 「발주 정보」와 6칸(목표, 입력, 유효 결정, 쓰기 범위, 금지, 완료 증거) 제목, `- tier:` 줄이 있어야 한다 |
 | 이름 규약 | 발주문 파일 이름의 `<name>`이 `<작업>-<model>-<effort>` 형식이고 두 토큰이 `- tier:` 줄의 핀과 같아야 한다(B-18 이전분) |
 | 시도 카운터 | `attempts_total`이 `max_attempts_total`을 넘지 않아야 한다 |
@@ -525,11 +526,11 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | P0 | 기준선 확인 | `executor-med` | 네 검사가 모두 통과한다 | `bash scripts/smoke-hook.sh` · `bash scripts/test-lint.sh` · `python3 scripts/lint-delegate-first.py --strict` · `bash scripts/test-reinstall.sh` |
 | P1 | `.gitignore`에 `.delegate/` 추가. 이 재구축의 작업 디렉터리 `.delegate/20261030-delegate-first-v2/`를 만든다 | `executor-max`(`.gitignore`·디렉터리), 메인(작업 문서 내용) | 디렉터리가 추적되지 않는다 | `git check-ignore -v .delegate/20261030-delegate-first-v2/TASK.md`가 0으로 끝난다 · `git status --short`에 `.delegate`가 없다 |
 | P2 | 작업 디렉터리 뼈대: `new-task.sh`, 짝·필수 칸·이름 규약을 검사하는 `close-task.sh`, 템플릿 4종(`TASK`·`REFS`·`PROGRESS`·`ORDER`), 샌드박스 테스트 `scripts/test-delegate-scripts.sh`(결정 D8·D10) | `executor-max`(기준 ①) | 임시 git 저장소에서 정상·짝 누락·필수 칸 누락·이름 규약 위반 케이스가 각각 기대 종료 코드를 낸다 | `bash scripts/test-delegate-scripts.sh` |
-| P3 | B-18을 훅에서 뺀다(결정 D8). smoke의 B-18 케이스를 통과 기대로 바꾸거나 지우고, 훅 주석·안내문과 README 차단 코드 표를 맞춘다 | `executor-high` | 훅에 B-18 분기가 없고 smoke가 통과한다 | `grep -n 'B-18' .claude/hooks/enforce-subagent-model.cjs`(0건 기대) · `bash scripts/smoke-hook.sh` |
+| P3 | B-18을 훅에서 뺀다(결정 D8). smoke의 B-18 케이스를 통과 기대로 바꾸거나 지우고, 훅 주석·안내문과 README 차단 코드 표를 맞춘다 | `executor-high` | 훅에 B-18 분기가 없고 smoke가 통과한다 | `grep -n 'B-18' .claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`(0건 기대) · `bash scripts/smoke-hook.sh` |
 | P4 | 위임 로그 lint에 이름 규약 검사를 더한다. role 칸 앞 `[<name>]`의 model·effort 토큰이 같은 행의 model·effort 칸과 같은지 본다. `test-lint.sh` 케이스를 먼저 쓴다 | `executor-high` | 신규 케이스가 구현 전 실패하고 구현 후 통과한다. 기존 로그가 `--strict`를 통과한다 | `bash scripts/test-lint.sh` · `python3 scripts/lint-delegate-first.py --strict` |
 | P5 | `close-task.sh` 나머지 검사: 쓰기 범위 대조, 요구 ID 집합 일치, 완료·증거, H 분류 참조, `[promote]` 승격, 리뷰 트리거 검수 행, 시도 카운터, `--dry-run` | `executor-max`(기준 ①) | 검사마다 위반 케이스가 1을 내고 정상 케이스가 0을 낸다. 각 케이스가 실제로 실패를 재현한다 | `bash scripts/test-delegate-scripts.sh` |
 | P6 | H1: 변이 게이트 `scripts/test-smoke-nonvacuous.sh`를 만들고 pre-commit에 등록한다 | `executor-high` | B-11·B-12·fork 분기를 끈 변이본이 각각 smoke 실패를 낸다. 정상 훅은 통과한다 | `bash scripts/test-smoke-nonvacuous.sh` · `grep -n test-smoke-nonvacuous .githooks/pre-commit` |
-| P7 | M1: `ALLOW_TIER_MODEL_OVERRIDE=1` 경로에서 effort 부재가 통과하는 결함을 고친다. smoke 케이스를 먼저 추가한다 | `executor-high` | 신규 케이스가 수정 전 훅에서 실패하고 수정 후 통과한다 | `git show HEAD:.claude/hooks/enforce-subagent-model.cjs > /tmp/hook-old.cjs` 후 `bash scripts/smoke-hook.sh /tmp/hook-old.cjs`(실패 기대) · `bash scripts/smoke-hook.sh`(통과 기대) |
+| P7 | M1: `ALLOW_TIER_MODEL_OVERRIDE=1` 경로에서 effort 부재가 통과하는 결함을 고친다. smoke 케이스를 먼저 추가한다 | `executor-high` | 신규 케이스가 수정 전 훅에서 실패하고 수정 후 통과한다 | `git show HEAD:.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs > /tmp/hook-old.cjs` 후 `bash scripts/smoke-hook.sh /tmp/hook-old.cjs`(실패 기대) · `bash scripts/smoke-hook.sh`(통과 기대) |
 | P8 | M2: 「핀 없는 타입」을 「tier 6종 밖(훅이 핀을 모르는 타입)」으로 정정한다. 규칙 파일·BACKLOG·훅 안내문·README가 대상이다 | `executor-med` | 옛 표현이 남지 않는다. smoke가 안내문을 검사하면 같은 커밋에서 함께 고친다 | `grep -rn '핀 없는 타입' .claude BACKLOG.md README.md scripts` · `bash scripts/smoke-hook.sh` |
 | P9 | M3: 규칙 파일 원칙 2 이력 블록과 `routing-matrix.md` 「★ 실측」의 named effort 서술을 관측 범위로 한정한다 | `executor-med` | 서술이 표본 수와 판별 불가 범위를 함께 적는다 | `grep -n 'named' .claude/rules/subagent-model-routing.md .claude/skills/delegate-first/references/routing-matrix.md` |
 | P10 | `SKILL.md` 체크리스트에 「발주 작성」 단계를 더한다. `routing-matrix.md`·`prompt-templates.md`를 6칸과 발주문 경로 전달로 갱신한다 | `executor-high` | 세 문서가 §4와 같은 칸 구성을 말한다. `CONTRACT:` 줄을 요구하는 서술이 없다 | `python3 scripts/lint-delegate-first.py --strict` · `grep -n 'CONTRACT' .claude/skills/delegate-first/SKILL.md .claude/skills/delegate-first/references/*.md`(0건 기대) |
@@ -541,7 +542,7 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | P16 | 이 재구축을 `close-task.sh`로 닫는다. 작업 문서는 P1에서 만든 것을 쓴다 | 메인 | 종료 코드 0. 쓰기 범위 대조에 위반이 없다 | `bash .claude/skills/delegate-first/scripts/close-task.sh 20261030-delegate-first-v2` |
 | P17 | fable 출하 게이트 | `judge-max` | 판정이 MERGE 계열이다 | 판정문 |
 | P18 | `CHANGELOG.md`와 `docs/release/v2.md`를 쓴다 | `executor-med` | 두 파일이 승격 대상 변경을 모두 담는다 | `python3 scripts/lint-delegate-first.py --strict` · `git diff --stat` |
-| P19 | 승인 뒤 commit·push·PR을 낸다. 머지는 사용자가 한다. 전역 전파는 훅 → 규칙 → 실측 → 재설치 순서(BACKLOG B-08 절차)로 하고, 활성화 범위(§10 항목 14)가 정해진 뒤에 한다 | 메인과 사용자 | push 뒤 원격 SHA가 로컬 HEAD와 같다. 전역 사본이 정본과 같다 | `git ls-remote origin <브랜치>` · `cmp .claude/hooks/enforce-subagent-model.cjs ~/.claude/hooks/enforce-subagent-model.cjs` |
+| P19 | 승인 뒤 commit·push·PR을 낸다. 머지는 사용자가 한다. 전역 전파는 훅 → 규칙 → 실측 → 재설치 순서(BACKLOG B-08 절차)로 한다. 활성화 범위는 결정 D14로 정해졌고, 전역 `settings.json` 옛 등록의 처리(§10 항목 17)는 전파 전에 사용자가 정한다 | 메인과 사용자 | push 뒤 원격 SHA가 로컬 HEAD와 같다. 전역 사본이 정본과 같다 | `git ls-remote origin <브랜치>` · `cmp .claude/skills/delegate-first/hooks/enforce-subagent-model.cjs ~/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs` |
 | P20 | 측정 기록: 재설명 횟수·누락 요구·재요청·시간·토큰을 이 작업의 `PROGRESS.md`에 남긴다 | 메인 | 항목마다 값 또는 「계측 수단 없음」이 적힌다 | `PROGRESS.md` 확인 |
 
 ## 10. 미검증·위험
@@ -556,10 +557,13 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | 6 | worktree 시드 | gitignore된 디렉터리가 worktree에 없다. 시드 옵션과 반환물 복사 절차를 구현하거나 실측하지 않았다 | P5 범위에 시드 케이스를 넣을지 메인이 판정한다 |
 | 7 | 스크립트 실행 권한 | 스킬 디렉터리의 스크립트가 `reinstall.sh`의 `cp -R` 뒤에도 실행 비트를 유지하는지 확인하지 않았다. 문서의 호출 예시는 `bash <경로>`로 실행 비트에 기대지 않는다 | `test-reinstall.sh`에 모드 확인 케이스를 더한다 |
 | 8 | 훅 강제의 실효 | 공식 사양상 차단되는 PreToolUse 동작이 현장에서 무시된다는 보고가 있다(RY `REPORT.md` §5 경고 1). Stop 훅의 연속 차단 상한은 Stop 훅 한정이라 이 설계에 직접 걸리지 않는다. 그래도 하네스 경로의 end-to-end 실측은 smoke가 대신하지 못한다 | 전파 뒤 B-08의 4단계 실측을 한다 |
-| 9 | tier 6종 밖 타입의 이름 처리 | 정의에 핀이 있지만 tier 6종 밖인 타입(`doc-reviewer` 등)에 이름을 붙이면 현재 레포 훅은 exit 2로 차단하고 전역 훅 사본은 통과시킨다(전역 사본에 B-18 없음). B-18을 훅에서 빼면 두 사본이 모두 통과시킨다. 결정 D9로 `doc-reviewer`가 이 레포에 들어올 때 tier로 취급할지와 사후 lint의 대상 타입을 정해야 이 항목이 닫힌다 | P12 착수 전 메인 판정 |
+| 9 | tier 6종 밖 타입의 이름 처리 | 정의에 핀이 있지만 tier 6종 밖인 타입(`doc-reviewer` 등)에 이름을 붙여도 레포 훅과 전역 훅 사본이 모두 통과시킨다. 레포 훅은 B-18을 뺐고 전역 사본에는 B-18이 없다. 결정 D9로 `doc-reviewer`가 이 레포에 들어올 때 tier로 취급할지와 사후 lint의 대상 타입을 정해야 이 항목이 닫힌다 | P12 착수 전 메인 판정 |
 | 10 | 메인 직접 쓰기 예외 | D2의 직접 쓰기 예외는 훅이 막지 못하는 규약이다. 범위를 넘는 직접 쓰기는 사람이 발견해야 한다 | 위임 로그와 diff 대조 |
 | 11 | 활성 결정 색인의 부패 | `docs/decisions.md`가 실제 규칙과 어긋나도 잡는 검사가 없다. `close-task.sh`는 `[promote]` 누락만 본다 | 색인 항목의 근거 경로 존재를 lint에 더할지 메인이 판정한다 |
 | 12 | named 스폰 effort 유실의 사후 탐지 | 이름 규약이 훅에서 빠지면 tier 밖 타입에 이름을 붙인 호출이 나가고 호출 effort가 유실된다. 호출 시점에는 막지 못하고 반환 뒤 전사 대조와 위임 로그 lint로만 잡힌다 | P4 lint 케이스와 반환 뒤 대조 기록 |
 | 13 | tier 밖 타입의 계약 우회 | `general-purpose`·`codex:*`·`oh-my-claudecode:*` 호출은 발주문 없이 나간다. 계약 없는 위임 경로가 남는다 | tier 밖 타입의 사용 조건을 `routing-matrix.md`의 out-of-table 절차와 맞출지 메인이 판정한다 |
-| 14 | 훅 활성화 범위 미결 | 훅은 전역 `~/.claude/settings.json`과 레포 `.claude/settings.json` 양쪽에 등록돼 있다. 전역 등록 유지, delegate-first 설치 프로젝트만, 스킬 호출 세션만 중 어느 범위로 둘지 정하지 않았다. 범위에 따라 설치되지 않은 프로젝트의 tier 호출이 받는 영향이 달라진다 | 사용자 결정. P19 전역 전파 전에 정한다 |
+| 14 | 훅 활성화 범위(결정 D14)의 사각지대 | 훅은 스킬을 호출한 세션에서만 켜진다. 스킬을 호출하지 않은 세션과 스킬이 설치되지 않은 프로젝트에는 강제가 없다. 전역 `~/.claude/settings.json`에 옛 등록이 남아 있으면 이 레포가 바꾸지 않으므로 별도로 정리해야 하고, 남아 있는 동안 스킬 호출 세션에서는 두 훅이 함께 돌 수 있다(미실측) | 전역 등록의 처리는 P19 전역 전파 전에 사용자가 정한다. 이중 등록 동작은 전파 뒤 B-08 실측에서 확인한다 |
 | 15 | 위임 로그의 이름 위치 | 위임 로그 7열에는 이름 칸이 없다. P4 lint는 role 칸 앞 `[<name>]` 관례에 기댄다. 이 관례가 없는 과거 행(결정 D13으로 유지)을 lint가 어떻게 다룰지 정하지 않았다 | P4 착수 전 메인 판정 |
+| 16 | 이름 인자의 기계 대조 부재 | `close-task.sh`는 `orders/NN-<name>.md` 발주문 파일 이름의 토큰만 본다. 실제 Agent 호출의 `name` 인자와 발주문 파일 이름을 기계로 대조하는 검사가 없다(리뷰 M5와 같다). 핀 없는 타입의 이름 금지도 기계 검사가 없다 | 반환 뒤 대조(규칙 원칙 5)의 전사 확인으로 잡는다. 기계 대조를 더할지 메인이 판정한다 |
+| 17 | 전역 옛 등록이 남은 동안의 이중 실행 | 전역 `~/.claude/settings.json`에 옛 훅 등록이 남아 있으면 스킬 호출 세션에서 스킬 훅과 옛 등록이 함께 돈다. 낡은 사본도 판정에 참여한다. 프로젝트 사본이 없으면 command가 `$HOME/.claude/skills/delegate-first/hooks/`의 사본으로 fallback하므로 그 사본이 낡아도 판정한다. `reinstall.sh`는 옛 등록을 경고만 하고 지우지 않는다 | 전역 정리는 사용자 승인 대기다. 정리 뒤 B-08 실측으로 단일 실행을 확인한다 |
+| 18 | 사고: pre-commit 경유 GIT_DIR 누출 | 17:11에 worktree 커밋이 원본 클론의 `.githooks/pre-commit`을 실행했다. pre-commit이 부른 테스트가 git이 넘긴 `GIT_DIR`을 물려받아 샌드박스의 git 명령이 공통 `.git/config`를 오염시켰다. 복구는 끝났다. 원인 수정 위치는 `.githooks/pre-commit`이다. 레포 루트를 구한 뒤 테스트 스위트 호출 전에 `GIT_DIR` 등 git 환경 변수를 unset한다 | `scripts/smoke-hook.sh`의 ⑦ 케이스가 `/tmp` 미끼 레포의 worktree 커밋으로 누출 여부를 검사한다 |

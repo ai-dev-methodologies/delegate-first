@@ -80,3 +80,19 @@
 | 2026-10-30 | reviewer-high | [ilyas-fit-opus-high] 이식·별도 적용 판정 | opus | high | Agent(tier) | 이식/별도 판정: 혼합 (전사 기준 사후 기록, 이름·전사 일치) |
 | 2026-10-30 | executor-high | [v2-blueprint-sonnet-high] v2 청사진·판정표 2건·로그 소급 작성 | sonnet | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
 | 2026-10-30 | executor-max | [v2-3a-opus-high] 청사진 결정 D8~D13 반영·작업 디렉터리 뼈대(new-task·close-task·템플릿 4종) | opus | high | Agent(tier) | (리뷰 대기) |
+| 2026-10-30 | claude-code-guide | 스킬 frontmatter hooks 사양 조회(활성화 범위 ③ 근거) | sonnet | medium | Agent(ad-hoc) | 사양 조회 완료 (무명 스폰, 전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | 미상 | [v2-3b-probe] 스킬 frontmatter hooks 발동·차단 프로브 | sonnet | medium | Agent(tier) | 프로브 실측 1·2·3 PASS, 결정 D14 근거 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-3a-review] v2-3a 작업 디렉터리 뼈대 리뷰 | opus | high | Agent(tier) | 미상 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | 미상 | [v2-3c-hook] 3c 훅 범위 축소·활성화 범위 구현 | 미상 | 미상 | Agent(ad-hoc) | 중단 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | 미상 | [3a-fix] v2-3a 리뷰 지적 수정 | 미상 | 미상 | Agent(ad-hoc) | 중단 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | 미상 | [v2-3afix-test-sonnet-medium] 3a 수정 테스트 작성 | sonnet | medium | Agent(tier) | 미상 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | 미상 | [v2-3chook-test-sonnet-medium] 3c 훅 테스트 작성 | sonnet | medium | Agent(tier) | 미상 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-3afix-review-opus-high] 3a 수정 리뷰 | opus | high | Agent(tier) | 진행 중, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-high | [v2-3chook-fix-sonnet-high] 3c-hook 미완 작업 완성(reinstall·pre-commit·규칙·청사진·로그) | sonnet | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-3afix-refix-opus-high] v2-3a 리뷰 지적 재수정 | opus | high | Agent(tier) | 중단, 사고 발생(pre-commit 경유 테스트가 GIT_DIR을 물려받아 공통 .git/config 오염, 복구 완료) (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-3afix-refix2-opus-high] v2-3a 리뷰 지적 재수정 2차 | opus | high | Agent(tier) | 진행 중, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-3chook-review-opus-high] 3c-hook 적대 리뷰 | opus | high | Agent(tier) | 지적 H 1건 외 M·L, v2-3chook-fix2로 반영 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-3chook-fix2-opus-high] 3c-hook 적대 리뷰 반영(pre-commit git 환경 격리·훅 command fail-closed·옛 등록 경고·옛 경로 정리) | opus | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-med | [v2-3chook-docs-sonnet-medium] 3c-hook 문서 갱신(추가 지시 1건 포함) | sonnet | medium | Agent(tier) | 미상 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-5d-review-opus-high] 3c-hook·3a 수정 확인 리뷰 | opus | high | Agent(tier) | 지적 M1~M5·L1~L6, v2-5d-fix로 반영 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-5d-fix-opus-high] 확인 리뷰 반영(close-task 반환 칸 판정·훅 command 셸 옵션 내성·GIT_CONFIG 격리·settings.local 옛 등록 경고·문서 사실성)과 커밋 | opus | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |

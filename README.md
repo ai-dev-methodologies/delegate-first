@@ -2,7 +2,7 @@
 
 메인 세션(고비용 프론트티어 모델)이 실행 작업을 직접 하지 않고 **계획·위임·리뷰·판정만** 하도록 강제하는 Claude Code 워크플로 규율이다. 스킬 1종 · tier 에이전트 6종 · PreToolUse 강제 훅으로 구성한다.
 
-이 문서는 사람이 따르는 설치·검증 순서를 소유한다. 규칙 원문은 [규칙 파일](.claude/rules/subagent-model-routing.md)이, 훅의 판정은 `.claude/hooks/enforce-subagent-model.cjs`가 소유한다. 이 문서의 호출 규약 절은 그 요약이다.
+이 문서는 사람이 따르는 설치·검증 순서를 소유한다. 규칙 원문은 [규칙 파일](.claude/rules/subagent-model-routing.md)이, 훅의 판정은 `.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs`가 소유한다. 이 문서의 호출 규약 절은 그 요약이다.
 
 ## 이 레포의 위치
 
@@ -45,13 +45,13 @@
 | model·effort 부재 | `model` 또는 `effort`가 없거나 공백이다 | 차단 |
 | B-11 | tier의 `model`이 핀과 다르다 | 차단 |
 | B-12 | tier의 `effort`가 핀과 다르다 | 차단 |
-| B-18 | tier의 `name`이 없거나 형식·토큰이 다르다 | 차단 |
-| B-18 | 핀 없는 타입에 `name`이 있다 | 차단 |
 | fork | `subagent_type: fork`인데 prompt에 `FORK_REASON: conversation-context` 줄이 없다 | 차단 |
 
-사람 전용 break-glass는 2종이다. `ALLOW_INHERITED_SUBAGENT_MODEL=1`은 model·effort 부재 차단을, `ALLOW_TIER_MODEL_OVERRIDE=1`은 tier 값 불일치 차단(B-11·B-12)을 푼다. 이름 필수·이름 금지·fork 사유는 어떤 break-glass로도 우회되지 않는다. 에이전트는 이 변수를 스스로 설정하지 않는다.
+사람 전용 break-glass는 2종이다. `ALLOW_INHERITED_SUBAGENT_MODEL=1`은 model·effort 부재 차단을, `ALLOW_TIER_MODEL_OVERRIDE=1`은 tier 값 불일치 차단(B-11·B-12)을 푼다. fork 사유는 어떤 break-glass로도 우회되지 않는다. 에이전트는 이 변수를 스스로 설정하지 않는다.
 
 **상향 경로**: 구현 기본은 `executor-high`다. [규칙 파일](.claude/rules/subagent-model-routing.md)의 상향 기준 ①~④에 해당하면 `executor-max`로 올리고, 발주문에 `- 상향 근거: <기준 번호>` 1줄을 적는다.
+
+**이름 규약**: 훅은 `name`을 막지 않는다. `close-task.sh`가 발주문 파일명 토큰만 사후 검사하고, 실제 Agent `name`은 아래 「반환 뒤 대조」가 확인한다.
 
 **반환 뒤 대조**: 서브에이전트가 반환할 때마다 전사(`.jsonl`)의 실제 `model`·`effort`를 이름 토큰과 대조한다. 불일치는 구조 이슈로 기록하고, 원인을 닫은 뒤 다음 발주를 낸다.
 
@@ -70,9 +70,9 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
         PreToolUse 훅: enforce-subagent-model.cjs
               (matcher: Agent — 위 「Agent 호출 규약」의 차단 코드를 exit 2로 강제:
                model·effort 부재 · B-11(model 핀) · B-12(effort 핀) ·
-               B-18(이름 규약) · fork 사유 없음.
+               fork 사유 없음.
                break-glass는 ALLOW_INHERITED_SUBAGENT_MODEL=1 ·
-               ALLOW_TIER_MODEL_OVERRIDE=1 2종이며 이름 필수·이름 금지·fork 사유는
+               ALLOW_TIER_MODEL_OVERRIDE=1 2종이며 fork 사유는
                우회 불가)
               ↑ 정책 근거
         글로벌 규칙: subagent-model-routing.md
@@ -85,12 +85,11 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 ├── .claude/
 │   ├── skills/delegate-first/
 │   │   ├── SKILL.md
+│   │   ├── hooks/enforce-subagent-model.cjs  (SKILL.md frontmatter hooks가 등록)
 │   │   └── references/{routing-matrix.md, prompt-templates.md}
 │   ├── agents/{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md
-│   ├── hooks/enforce-subagent-model.cjs
 │   ├── rules/subagent-model-routing.md
-│   ├── settings.json                  (이 레포용 활성 훅 등록 — dogfood)
-│   └── settings.json.example          (훅 등록 예시 — 복사해서 쓰는 템플릿)
+│   └── settings.json                  (`{}` — 훅 등록 없음)
 ├── docs/
 │   ├── REINSTALL.md                   (정본 → 프로젝트 로컬 재설치 절차)
 │   ├── HANDOFF-2026-08-17.md          (최초 이관 패키지 원본)
@@ -112,24 +111,16 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 **처음 설치하는 사람은 이 순서를 따른다** (신규/기존 무관 — 최초 1회):
 
 1. 아래 A) 절차(수동 `cp`, 또는 `scripts/reinstall.sh`)로 skills + tier 에이전트를 깐다.
-2. **훅을 별도로 등록한다** — A) 절차든 `scripts/reinstall.sh`든 이 단계를 대신해주지 않는다.
-   - 먼저 훅 **파일**을 배치한다. 1번을 `scripts/reinstall.sh`로 처리했다면 아래 A) 블록(수동 `cp`)을 실행하지 않았을 것이므로, 이 `cp`를 생략하면 훅 **파일 자체가 존재하지 않는** 상태로 다음 줄의 `settings.json` 등록만 하게 된다(등록할 파일이 없다). 프로젝트 로컬에 둘지 사용자 홈(전역)에 둘지 고른 뒤 하나만 실행한다:
-     ```bash
-     # 프로젝트 로컬:
-     mkdir -p "$DST/.claude/hooks"
-     cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$DST/.claude/hooks/"
-     # 또는 전역(전 프로젝트 공통):
-     # mkdir -p "$HOME/.claude/hooks"
-     # cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$HOME/.claude/hooks/"
-     ```
-   - 그다음 `settings.json`의 `PreToolUse`에 등록한다. `.claude/settings.json.example`을 복사해 등록하는 절차는 아래 A) 안의 "훅은 파일을 두는 것만으로는 작동하지 않는다" 문단을 따른다.
+2. **훅은 따로 등록하지 않는다.** 훅 파일은 스킬 디렉터리(`.claude/skills/delegate-first/hooks/`)에 들어 있어 1번에서 스킬과 함께 설치된다.
+   - 등록은 `SKILL.md` frontmatter `hooks`(PreToolUse, matcher `Agent`)가 맡는다. 훅은 delegate-first 스킬을 호출한 세션에서만 켜진다.
+   - `settings.json`에는 등록하지 않는다. 옛 `settings.json` 등록(`enforce-subagent-model`)이 전역이나 프로젝트에 남아 있으면 스킬 호출 세션에서 훅이 이중 실행되므로 그 등록을 지운다.
 3. [검증 3단계](#검증-3단계-설치-후-반드시-실행)를 돌려 스킬·훅·tier 에이전트가 실제로 발효 중인지 확인한다.
 
 이후 정본 최신판으로 **갱신**할 때는 1번을 `scripts/reinstall.sh`(`--dst` 지정, 신규/기존 겸용)로 반복하면 된다 — `cp -R` 수동 절차를 재실행하면 병합 문제(위 A) 참고)가 생긴다.
 
-> **`scripts/reinstall.sh`는 skills + tier 에이전트만 설치한다 — 훅 파일도, `settings.json` 등록도 하지 않는다(기본값 기준. `--propagate-global`을 줘도 훅/규칙을 **전역**(`$HOME/.claude`)에만 복사할 뿐 어느 경우든 `settings.json` 등록은 스크립트 밖의 사람 몫이다).** 스크립트만 돌리고 끝내면 강제(PreToolUse 차단)가 발효되지 않은 **반쪽 설치**다 — 위 2번을 반드시 별도로 수행한다.
+> **`scripts/reinstall.sh`는 skills(훅 파일 포함) + tier 에이전트를 설치한다.** 훅 등록은 설치된 `SKILL.md` frontmatter가 맡으므로 `settings.json` 단계가 없다. 스크립트는 설치 뒤 frontmatter `hooks`와 훅 파일이 모두 있는지 확인하고, 옛 `settings.json` 등록이 남아 있으면 경고한다.
 
-전역(`~/.claude`)에 새 tier(예: `executor-max`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙·훅만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
+전역(`~/.claude`)에 새 tier(예: `executor-max`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
 
 ### A) 프로젝트 로컬 설치 (권장, 빠름)
 
@@ -138,12 +129,10 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 ```bash
 SRC=<이 레포 경로>
 DST=<대상 프로젝트 경로>
-mkdir -p "$DST/.claude/skills" "$DST/.claude/agents" "$DST/.claude/hooks" "$DST/.claude/rules"
+mkdir -p "$DST/.claude/skills" "$DST/.claude/agents" "$DST/.claude/rules"
 cp -R "$SRC/.claude/skills/delegate-first" "$DST/.claude/skills/"
 cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md "$DST/.claude/agents/"
-cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$DST/.claude/hooks/"
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
-cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
 ```
 
 `SRC`/`DST`는 실제 절대경로로 교체해야 한다 — `<...>` placeholder를 그대로 두고 실행하면 `cp`가 아니라 셸이 `<`를 리다이렉션으로 해석해 1번째 줄에서 즉시 syntax error로 죽는다(2026-08-21 샌드박스 실측 — 아무 파일도 건드리기 전에 죽으므로 안전하지만, 성공한 것으로 착각할 소지는 없다).
@@ -152,34 +141,20 @@ cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
 
 `subagent-model-routing.md` 복사는 **선택 사항**이다 — `.claude/rules/`는 자동 로드 경로가 아니므로, 이 규칙에 효력을 주려면 설치 프로젝트의 `CLAUDE.md`에서 명시적으로 참조해야 한다(참조하지 않으면 파일만 있고 로드되지 않는다).
 
-훅은 파일을 두는 것만으로는 작동하지 않는다 — `settings.json`(또는 커밋하지 않을 `settings.local.json`)의 `PreToolUse`에 `matcher: "Agent"`로 **등록해야** 강제된다. `.claude/settings.json.example`을 복사해서 쓴다:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Agent",
-        "hooks": [
-          { "type": "command", "command": "node <훅 절대경로>/enforce-subagent-model.cjs" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-훅을 프로젝트 로컬(`<프로젝트>/.claude/hooks/`)에 둘지, 사용자 홈(`~/.claude/hooks/`, **전 프로젝트 전역**)에 둘지는 선택이다. 전역으로 두면 모든 프로젝트의 Agent 호출이 [호출 규약](#agent-호출-규약)대로 검사된다. 위 `command`의 경로만 그에 맞게 바꾸면 된다.
+훅은 위 `cp -R`로 스킬 디렉터리와 함께 복사된다. 등록은 `SKILL.md` frontmatter `hooks`가 맡으므로 `settings.json`에 등록하지 않는다.
+- 훅은 delegate-first 스킬을 호출한 세션에서만 켜진다. 스킬을 호출하지 않은 세션에는 자동 강제가 없다.
+- command는 `${CLAUDE_PROJECT_DIR}` 아래 프로젝트 사본을 먼저 찾고, 없으면 `$HOME/.claude/skills/delegate-first/hooks/`의 전역 사본을 쓴다.
+- 사본이 없거나 node가 없거나 훅이 0·2가 아닌 코드로 끝나면 exit 2로 막는다(fail-closed).
 
 break-glass 2종은 **사람 전용**이다. 종류와 범위는 [호출 규약](#agent-호출-규약)을 따른다. 에이전트가 이 변수를 스스로 설정하지 않는다.
 
-의도적으로 다른 model·effort를 쓰려면 사람이 `ALLOW_TIER_MODEL_OVERRIDE=1`을 설정한다. 이 변수는 `ALLOW_INHERITED_SUBAGENT_MODEL`과 별개이고, tier 값 불일치(B-11·B-12)만 허용한다. 부재 차단과 이름 규약은 그대로 막는다.
+의도적으로 다른 model·effort를 쓰려면 사람이 `ALLOW_TIER_MODEL_OVERRIDE=1`을 설정한다. 이 변수는 `ALLOW_INHERITED_SUBAGENT_MODEL`과 별개이고, tier 값 불일치(B-11·B-12)만 허용한다. 부재 차단은 그대로 막는다.
 
-이 레포 자체는 이미 활성 `.claude/settings.json`(위 블록과 **같은 구조** — command가 `node <훅 절대경로>/...`가 아니라 `node "${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs"`라는 점이 다르다)을 포함하고 있다 — 정본 레포가 자기 규율을 dogfood하는 배선이다. `${CLAUDE_PROJECT_DIR}`는 Claude Code가 훅 command 안에서 프로젝트 루트 절대경로로 확장해주는 변수라 경로를 하드코딩하지 않고도 이식 가능하다 — 어느 프로젝트로 복사하든 그대로 동작한다. 큰따옴표로 감싸는 것이 권장된다.
+이 레포 자체도 같은 배선을 쓴다. `.claude/settings.json`은 `{}`이고 훅 등록은 `SKILL.md` frontmatter 하나다. `${CLAUDE_PROJECT_DIR}`는 Claude Code가 훅 command 안에서 프로젝트 루트 절대경로로 확장해주는 변수라 경로를 하드코딩하지 않고도 이식 가능하다.
 
-**trust 동작 주의**: 대화형 세션은 workspace trust 다이얼로그를 수락하기 전까지 settings 파일의 훅을 보류한다. 그래서 "Agent 호출이 차단되지 않는다"가 항상 "훅 미등록"을 뜻하지는 않는다 — trust를 아직 수락하지 않은 상태일 수도 있다. 반대로 `-p`/SDK(헤드리스) 세션은 폴더를 신뢰된 것으로 취급해 커밋된 `.claude/settings.json`의 훅이 그대로 실행된다. 레포에 훅을 커밋해 배포할 때는 이 비대칭(대화형=trust 게이트, 헤드리스=즉시 활성)을 인지하고 있어야 한다.
+**trust 동작 주의**: 훅은 스킬을 호출한 세션에서만 켜진다. "Agent 호출이 차단되지 않는다"의 원인은 스킬 미호출, frontmatter `hooks` 누락, 훅 경로 문제 중 하나다. 대화형 세션의 workspace trust 다이얼로그가 settings 파일 훅을 보류하는 동작이 스킬 frontmatter 훅에도 같은지, 헤드리스(`-p`/SDK) 세션에서 frontmatter 훅이 즉시 실행되는지는 미검증이다(이 레포에 근거 없음).
 
-**훅 공급망 고지**: 이 레포는 커밋된 `settings.json` + 커밋된 훅 스크립트(`.claude/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.) 이 서약의 범위는 `.claude/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
+**훅 공급망 고지**: 이 레포는 커밋된 `SKILL.md` frontmatter 등록 + 커밋된 훅 스크립트(`.claude/skills/delegate-first/hooks/*.cjs`) 조합을 쓴다. 위 비대칭 때문에 헤드리스 소비자에게는 이 조합이 곧 "clone하면 자동 실행되는 코드"다. 그러므로 **`.claude/skills/delegate-first/hooks/*.cjs`를 건드리는 모든 PR은 매번 사람이 diff를 읽는다** — 리뷰 없이 머지하지 않는다. (참고: 현재 `enforce-subagent-model.cjs`는 stdin을 읽고 stderr에 쓰고 exit code를 반환하는 것 외에는 아무 동작도 하지 않는다.) 이 서약의 범위는 `.claude/skills/delegate-first/hooks/*.cjs`로 한정된다 — `scripts/*`와 `.githooks/*`는 별도의 실행 표면이다(B-07/B-02 린터 도입으로 새로 생겼다). `.githooks/pre-commit`은 옵트인(`git config core.hooksPath .githooks`를 사용자가 직접 실행해야 활성화)이라 커밋된 것만으로 자동 실행되지 않지만, 옵트인한 사용자에게는 **커밋마다** `scripts/*.py`/`scripts/*.sh`가 실행된다는 점에서 같은 수준의 신뢰가 필요하다. **그러므로 `scripts/*`와 `.githooks/*`를 건드리는 모든 PR도 사람이 diff를 읽는다** — `.claude/skills/delegate-first/hooks/*.cjs`와 동일하게 리뷰 없이 머지하지 않는다.
 
 ### B) 플러그인화
 
@@ -199,10 +174,10 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 훅 스크립트 단위 회귀는 `bash scripts/smoke-hook.sh`로 확인한다(부작용 없음, stdin 주입만). 단 이는 스크립트 로직 검증이며, 세션에서 실제로 발효 중인지는 아래 2·3번 라이브 스모크로 확인한다.
 
 1. **스킬 로드 확인** — 설치한 프로젝트 세션에서 `/delegate-first`를 호출해 `SKILL.md` 본문이 그대로 로드되는지 확인한다.
-2. **훅 차단 스모크** — `model`·`effort` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. (차단되지 않으면 훅이 `settings.json`에 등록되지 않은 것이다 — 단, 역은 성립하지 않는다: 차단됐다고 해서 **이 프로젝트**에 등록됐다는 뜻은 아니다. `~/.claude/settings.json`에 같은 훅이 **전역**으로 이미 등록돼 있으면, 이 프로젝트의 `.claude/settings.json`을 지워도 스모크는 그대로 통과한다(2026-08-18 실측 — 전역 등록만으로 차단됨). 전역 등록과 프로젝트 등록을 구분하려면 (a) 스모크 전에 전역 등록을 일시 비활성화하거나 (b) 프로젝트 훅 command를 래퍼로 감싸 stderr에 출처를 직접 찍는다 — 예: `{ "type": "command", "command": "sh -c 'echo \"[hook-src=project]\" >&2; exec node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs\"'" }`. (이전에 검토했던 `--src=project` 같은 인자 부착 방식은 훅 스크립트가 인자를 무시해 stderr가 두 경로에서 동일하게 나오므로 출처 판별이 **성립하지 않는다** — 실제로 검증 가능한 것은 래퍼 방식뿐이다. 래퍼가 `exec` 직전에 자기 출처를 stderr에 찍으므로 훅 스크립트 자체를 고치지 않고도 확실히 동작한다.))
-3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`를 핀 값(`model: haiku`·`effort: low`)과 규약 이름(`name: smoke-haiku-low`)으로 명시해 1회 호출하고 haiku/low로 도는지 확인한다. 이어서 `model`·`effort`·`name` 중 하나를 빼고 호출하면 exit 2로 막히는 것이 정상이다(tier도 생략 통과가 없고, 이름은 B-18이 강제한다). 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
+2. **훅 차단 스모크** — `model`·`effort` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. 차단되지 않으면 원인은 스킬 미호출, `SKILL.md` frontmatter `hooks` 누락, 훅 경로 문제 중 하나다. `settings.json` 미등록은 원인이 아니다. 반대로 차단됐다고 해서 스킬 frontmatter 등록이 동작한다는 뜻은 아니다. 옛 `settings.json`·`settings.local.json` 등록(전역·프로젝트)이 남아 있어도 같은 차단이 나온다. 그래서 스모크 전에 `scripts/reinstall.sh --dry-run`의 §0 경고로 옛 등록이 남은 파일이 없는지 확인한다. 옛 등록이 없는데 스킬을 호출하지 않은 세션에서 같은 호출이 통과하면 차단은 스킬 frontmatter 등록에서 나온 것이다.
+3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`를 핀 값(`model: haiku`·`effort: low`)과 규약 이름(`name: smoke-haiku-low`)으로 명시해 1회 호출하고 haiku/low로 도는지 확인한다. 이어서 `model`이나 `effort`를 빼고 호출하면 exit 2로 막히는 것이 정상이다(tier도 생략 통과가 없다). `name`을 빼거나 규약과 다르게 지어도 훅은 막지 않는다. 이름 규약은 `close-task.sh`가 발주문 파일 이름으로 사후에 검사한다. 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
 
-**전제: 발효 중인 훅 버전**: tier 에이전트도 `model`·`effort` 생략 호출이 exit 2로 막힌다. 정의를 아직 로드하지 못한 세션에서는 생략 호출이 세션 모델·effort를 상속하기 때문이다. **버전 불일치를 의심할 신호는 반대 방향이다** — 생략했는데 통과하거나, 핀 값을 명시했는데 막히는 경우다. 전역(`~/.claude/settings.json`)과 프로젝트(`.claude/settings.json`)의 동일 matcher(`Agent`) PreToolUse 훅은 **우선순위가 아니라 가산적으로 모두 실행되며, 등록된 훅 중 하나라도 exit 2면 차단**된다(훅 실행 **순서** 자체는 미확인이므로 순서를 단정하지 않는다). 즉 구 버전 사본이 한 벌이라도 남아 있으면 그 사본의 판정이 전체에 영향을 준다 — 오퍼레이터는 "발효 중인 하나만 갱신"이 아니라 **등록된 모든 사본**을 갱신해야 한다. 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 위 3번 스모크의 결과가 이 방향과 다르면 먼저 발효 중인 훅 버전부터 확인한다.
+**전제: 발효 중인 훅 버전**: tier 에이전트도 `model`·`effort` 생략 호출이 exit 2로 막힌다. 정의를 아직 로드하지 못한 세션에서는 생략 호출이 세션 모델·effort를 상속하기 때문이다. **버전 불일치를 의심할 신호는 반대 방향이다** — 생략했는데 통과하거나, 핀 값을 명시했는데 막히는 경우다. 훅은 `SKILL.md` frontmatter `hooks`로만 등록되고 전파 단계는 없다. 위험은 옛 전역(`~/.claude/settings.json`)·프로젝트(`.claude/settings.json`)의 `enforce-subagent-model` 등록이다. 등록된 훅은 가산적으로 모두 실행되고 하나라도 exit 2면 차단되므로(훅 실행 **순서**는 미확인이라 단정하지 않는다) 낡은 사본이 판정에 참여한다. 그 옛 등록은 지운다(`scripts/reinstall.sh` §0 경고와 같은 취지). 위 3번 스모크의 결과가 이 방향과 다르면 먼저 남아 있는 옛 등록부터 확인한다.
 
 ## 복구
 
@@ -218,9 +193,9 @@ git -C <정본레포> checkout main   # 되돌리기
 
 ## scripts/
 
-- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) + B-12(TIER_EXPECTED_EFFORT map ↔ frontmatter effort 정합성, B-18 이름 토큰 기대값 포함) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1. WARN은 **B-10부터 두 클래스로 나뉜다** — `drift`(pinned↔agents 파일 불일치, model은 있는데 effort가 없음 등: 방치하면 훅 판정 기준 자체가 어긋나는 결함)와 `workflow`(예: 위임 로그의 `(리뷰 대기)` 미마감 행이 임계 초과 — 결함이 아니라 정상 진행 중 작업 상태). 기본 모드는 WARN이 있어도 exit 0. `--strict`는 **drift 클래스 WARN만 exit 1로 승격**하고 workflow 클래스는 승격하지 않는다(출력에는 `[WARN:drift]`/`[WARN:workflow]`로 계속 보인다). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
+- `python3 scripts/lint-delegate-first.py [--strict]` — B-07(tier↔훅 pinned 드리프트) + B-02(위임 로그 스키마) + B-09(Set 리터럴 비-정적 항목 검출) + B-11(TIER_EXPECTED_MODEL map ↔ pinned Set ↔ frontmatter 3자 정합성) + B-12(TIER_EXPECTED_EFFORT map ↔ frontmatter effort 정합성) 검사. 경로는 `--agents-dir`/`--hook-path`/`--log-path`로 override 가능(설치 프로젝트마다 다를 수 있는 파라미터). 종료 코드: FAIL 있으면 1. WARN은 **B-10부터 두 클래스로 나뉜다** — `drift`(pinned↔agents 파일 불일치, model은 있는데 effort가 없음 등: 방치하면 훅 판정 기준 자체가 어긋나는 결함)와 `workflow`(예: 위임 로그의 `(리뷰 대기)` 미마감 행이 임계 초과 — 결함이 아니라 정상 진행 중 작업 상태). 기본 모드는 WARN이 있어도 exit 0. `--strict`는 **drift 클래스 WARN만 exit 1로 승격**하고 workflow 클래스는 승격하지 않는다(출력에는 `[WARN:drift]`/`[WARN:workflow]`로 계속 보인다). INFO는 알려진 예외(예: 빌트인 `statusline-setup`)를 무시했다는 사실만 보여주며 종료 코드에 영향을 주지 않는다.
 - `bash scripts/test-lint.sh` — 위 린터 자신의 회귀망(부작용 없음, `mktemp -d` 사본에만 변형을 가한다). 양성(FAIL 기대)·음성(PASS 기대)·B-10 클래스 분리 회귀·Finding 생성자 불변식·비공허성 확인을 합쳐 40건이다(`PASS 40/40`). 실측 ~1초.
-- `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음). 현재 `PASS 104/104`이며 B-18 이름 규약 케이스와 차단 메시지 문구 검사를 포함한다.
+- `bash scripts/smoke-hook.sh` — `enforce-subagent-model.cjs` 회귀 스모크(부작용 없음). 현재 `PASS 121/121`이며 차단 메시지 문구 검사를 포함한다.
 - `bash scripts/reinstall.sh [--dry-run]` — [docs/REINSTALL.md](docs/REINSTALL.md) §3 절차(정본 → 프로젝트 로컬 재설치)를 실행하는 스크립트. **파괴적**(대상 프로젝트 트리를 교체)이므로 실행 전 `--dry-run`으로 먼저 확인할 것. 전역(`~/.claude/`) 전파는 기본 비활성 — 별도 단계로 명시 실행해야 한다. `--rollback`은 없다 — 복구 절차는 [위 「복구」](#복구) 참고([docs/REINSTALL.md](docs/REINSTALL.md) §5도 동일).
 - `bash scripts/test-reinstall.sh` — `reinstall.sh`의 회귀 테스트(스크래치 사본에서 실행, 부작용 없음).
 - pre-commit 옵트인: `git config core.hooksPath .githooks`를 **사용자가 직접** 실행하면 커밋 전에 린터(`--strict`) · 린터 회귀망 · 훅 스모크가 자동 실행된다(자동 설치되지 않음). B-10부터 pre-commit의 린터 호출이 `--strict`로 승격됐다 — 드리프트류 WARN은 커밋을 막고, `(리뷰 대기)` 같은 워크플로류 WARN은 막지 않는다. **워킹트리 기준 상호작용 고지**: 이 검사는 스테이지된 인덱스가 아니라 **워킹 트리**를 대상으로 한다(`.githooks/pre-commit` 주석 참고) — `--strict` 승격으로 드리프트류 WARN이 게이트가 됐으므로, 워킹 트리에 미완성 드리프트(예: agents 파일만 고치고 훅 pinned 목록은 아직 안 고친 상태)가 있으면 **그와 무관한 별개 커밋**까지 막힐 수 있다. 대응: 완성 전이면 `git stash`로 미완성 변경을 잠시 치우고 커밋하거나, 삼각형(에이전트 파일 + 훅 pinned 목록 + 기대값 map)을 한 커밋에 완결시켜 드리프트 창을 없앤다.
