@@ -542,7 +542,7 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | P16 | 이 재구축을 `close-task.sh`로 닫는다. 작업 문서는 P1에서 만든 것을 쓴다 | 메인 | 종료 코드 0. 쓰기 범위 대조에 위반이 없다 | `bash .claude/skills/delegate-first/scripts/close-task.sh 20261030-delegate-first-v2` |
 | P17 | fable 출하 게이트 | `judge-max` | 판정이 MERGE 계열이다 | 판정문 |
 | P18 | `CHANGELOG.md`와 `docs/release/v2.md`를 쓴다 | `executor-med` | 두 파일이 승격 대상 변경을 모두 담는다 | `python3 scripts/lint-delegate-first.py --strict` · `git diff --stat` |
-| P19 | 승인 뒤 commit·push·PR을 낸다. 머지는 사용자가 한다. 전역 전파는 훅 → 규칙 → 실측 → 재설치 순서(BACKLOG B-08 절차)로 한다. 활성화 범위는 결정 D14로 정해졌고, 전역 `settings.json` 옛 등록의 처리(§10 항목 17)는 전파 전에 사용자가 정한다 | 메인과 사용자 | push 뒤 원격 SHA가 로컬 HEAD와 같다. 전역 사본이 정본과 같다 | `git ls-remote origin <브랜치>` · `cmp .claude/skills/delegate-first/hooks/enforce-subagent-model.cjs ~/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs` |
+| P19 | 승인 뒤 commit·push·PR을 낸다. 머지는 사용자가 한다. 전역 전파는 백업 → `reinstall.sh --dst "$HOME" --propagate-global` → 옛 등록 제거·옛 사본 이동 → 실측 순서로 한다. 결과는 §10 항목 17에 적는다 | 메인과 사용자 | push 뒤 원격 SHA가 로컬 HEAD와 같다. 전역 사본이 정본과 같다 | `git ls-remote origin <브랜치>` · `cmp .claude/skills/delegate-first/hooks/enforce-subagent-model.cjs ~/.claude/skills/delegate-first/hooks/enforce-subagent-model.cjs` |
 | P20 | 측정 기록: 재설명 횟수·누락 요구·재요청·시간·토큰을 이 작업의 `PROGRESS.md`에 남긴다 | 메인 | 항목마다 값 또는 「계측 수단 없음」이 적힌다 | `PROGRESS.md` 확인 |
 
 ## 10. 미검증·위험
@@ -565,5 +565,5 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | 14 | 훅 활성화 범위(결정 D14)의 사각지대 | 훅은 스킬을 호출한 세션에서만 켜진다. 스킬을 호출하지 않은 세션과 스킬이 설치되지 않은 프로젝트에는 강제가 없다. 전역 `~/.claude/settings.json`에 옛 등록이 남아 있으면 이 레포가 바꾸지 않으므로 별도로 정리해야 하고, 남아 있는 동안 스킬 호출 세션에서는 두 훅이 함께 돌 수 있다(미실측) | 전역 등록의 처리는 P19 전역 전파 전에 사용자가 정한다. 이중 등록 동작은 전파 뒤 B-08 실측에서 확인한다 |
 | 15 | 위임 로그의 이름 위치 | 위임 로그 7열에는 이름 칸이 없다. P4 lint는 role 칸 앞 `[<name>]` 관례에 기댄다. 이 관례가 없는 과거 행(결정 D13으로 유지)을 lint가 어떻게 다룰지 정하지 않았다 | P4 착수 전 메인 판정 |
 | 16 | 이름 인자의 기계 대조 부재 | `close-task.sh`는 `orders/NN-<name>.md` 발주문 파일 이름의 토큰만 본다. 실제 Agent 호출의 `name` 인자와 발주문 파일 이름을 기계로 대조하는 검사가 없다(리뷰 M5와 같다). 핀 없는 타입의 이름 금지도 기계 검사가 없다 | 반환 뒤 대조(규칙 원칙 5)의 전사 확인으로 잡는다. 기계 대조를 더할지 메인이 판정한다 |
-| 17 | 전역 옛 등록이 남은 동안의 이중 실행 | 전역 `~/.claude/settings.json`에 옛 훅 등록이 남아 있으면 스킬 호출 세션에서 스킬 훅과 옛 등록이 함께 돈다. 낡은 사본도 판정에 참여한다. 프로젝트 사본이 없으면 command가 `$HOME/.claude/skills/delegate-first/hooks/`의 사본으로 fallback하므로 그 사본이 낡아도 판정한다. `reinstall.sh`는 옛 등록을 경고만 하고 지우지 않는다 | 전역 정리는 사용자 승인 대기다. 정리 뒤 B-08 실측으로 단일 실행을 확인한다 |
+| 17 | 전역 옛 등록이 남은 동안의 이중 실행 | 전역 `~/.claude/settings.json`에 옛 훅 등록이 남아 있으면 스킬 호출 세션에서 스킬 훅과 옛 등록이 함께 돈다. 낡은 사본도 판정에 참여한다. 프로젝트 사본이 없으면 command가 `$HOME/.claude/skills/delegate-first/hooks/`의 사본으로 fallback하므로 그 사본이 낡아도 판정한다. `reinstall.sh`는 옛 등록을 경고만 하고 지우지 않는다 | 전역 옛 등록을 지우고 옛 전역 훅 사본을 백업으로 옮겼다. 헤드리스 실측에서 스킬 세션은 스킬 훅으로 차단되고 스킬 밖 세션은 통과했다. 대화형 세션은 실측하지 않았다 |
 | 18 | 사고: pre-commit 경유 GIT_DIR 누출 | 17:11에 worktree 커밋이 원본 클론의 `.githooks/pre-commit`을 실행했다. pre-commit이 부른 테스트가 git이 넘긴 `GIT_DIR`을 물려받아 샌드박스의 git 명령이 공통 `.git/config`를 오염시켰다. 복구는 끝났다. 원인 수정 위치는 `.githooks/pre-commit`이다. 레포 루트를 구한 뒤 테스트 스위트 호출 전에 `GIT_DIR` 등 git 환경 변수를 unset한다 | `scripts/smoke-hook.sh`의 ⑦ 케이스가 `/tmp` 미끼 레포의 worktree 커밋으로 누출 여부를 검사한다 |

@@ -96,3 +96,9 @@
 | 2026-10-30 | executor-med | [v2-3chook-docs-sonnet-medium] 3c-hook 문서 갱신(추가 지시 1건 포함) | sonnet | medium | Agent(tier) | 미상 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
 | 2026-10-30 | reviewer-high | [v2-5d-review-opus-high] 3c-hook·3a 수정 확인 리뷰 | opus | high | Agent(tier) | 지적 M1~M5·L1~L6, v2-5d-fix로 반영 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
 | 2026-10-30 | executor-max | [v2-5d-fix-opus-high] 확인 리뷰 반영(close-task 반환 칸 판정·훅 command 셸 옵션 내성·GIT_CONFIG 격리·settings.local 옛 등록 경고·문서 사실성)과 커밋 | opus | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-6rr-opus-high] v2-5d-fix(bc65c5a) 적대 재리뷰 | opus | high | Agent(tier) | 미상, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-med | [v2-6stale-sonnet-medium] 낡은 문서 서술 2건 수정 | sonnet | medium | Agent(tier) | 미상, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | doc-reviewer | [무명] 문서 style-guide·grammar-checker 검사 | opus | high | Agent(ad-hoc) | 미상, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-6fix-opus-high] v2-5d-fix 리뷰 지적 수정 | opus | high | Agent(tier) | 미상, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-med | [v2-6docfix-sonnet-medium] 문서 검사의 확실한 오류 반영 | sonnet | medium | Agent(tier) | 미상, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-max | [v2-8global-opus-high] 전역 재설치·옛 훅 등록 제거·헤드리스 실측 | opus | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
