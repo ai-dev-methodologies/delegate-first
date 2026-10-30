@@ -11,3 +11,6 @@
 # Python bytecode
 __pycache__/
 *.pyc
+
+# delegate-first work directories (ignore mode, blueprint §6)
+.delegate/
