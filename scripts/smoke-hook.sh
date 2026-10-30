@@ -49,29 +49,58 @@ run_case() {
   fi
 }
 
-# --- tier 6종: model 없이 호출 → pinned 목록 통과 (exit 0) ---
-run_case "tier explorer-low, model 없음" '{"tool_input":{"subagent_type":"explorer-low"}}' 0
-run_case "tier executor-med, model 없음" '{"tool_input":{"subagent_type":"executor-med"}}' 0
-run_case "tier executor-high, model 없음" '{"tool_input":{"subagent_type":"executor-high"}}' 0
-run_case "tier reviewer-high, model 없음" '{"tool_input":{"subagent_type":"reviewer-high"}}' 0
-run_case "tier judge-max, model 없음" '{"tool_input":{"subagent_type":"judge-max"}}' 0
-run_case "tier executor-opus, model 없음" '{"tool_input":{"subagent_type":"executor-opus"}}' 0
+# --- 원칙 5: tier도 model 생략 금지 — model 없이 호출 → 차단 (exit 2) ---
+# 주의: 이 6건은 원칙 5 이전엔 exit 0(pinned 목록 통과)을 기대했었다. 세션
+# 중에 추가된 정의를 하네스가 아직 모르면 생략한 호출이 세션 모델·effort를
+# 상속했기 때문에(실측: executor-max 첫 스폰 → fable·xhigh) 생략 통과를
+# 폐지했다 — 이 exit 2로의 전환은 의도된 동작 변경이지 회귀가 아니다.
+run_case "tier explorer-low, model 없음" '{"tool_input":{"subagent_type":"explorer-low"}}' 2
+run_case "tier executor-med, model 없음" '{"tool_input":{"subagent_type":"executor-med"}}' 2
+run_case "tier executor-high, model 없음" '{"tool_input":{"subagent_type":"executor-high"}}' 2
+run_case "tier reviewer-high, model 없음" '{"tool_input":{"subagent_type":"reviewer-high"}}' 2
+run_case "tier judge-max, model 없음" '{"tool_input":{"subagent_type":"judge-max"}}' 2
+run_case "tier executor-max, model 없음" '{"tool_input":{"subagent_type":"executor-max"}}' 2
 
 # --- general-purpose: pinned 아님 → model 없으면 차단 ---
 run_case "general-purpose, model 없음" '{"tool_input":{"subagent_type":"general-purpose"}}' 2
 run_case "general-purpose, model 공백 문자열" '{"tool_input":{"subagent_type":"general-purpose","model":"   "}}' 2
-run_case "general-purpose, model haiku" '{"tool_input":{"subagent_type":"general-purpose","model":"haiku"}}' 0
+run_case "general-purpose, model haiku + effort low" '{"tool_input":{"subagent_type":"general-purpose","model":"haiku","effort":"low"}}' 0
 
-# --- 플러그인 정의형 pinned 타입 ---
-run_case "oh-my-claudecode:writer, model 없음" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer"}}' 0
+# --- 플러그인 정의형 pinned 타입: 원칙 5로 생략 통과 폐지, 기대 model 맵 적용 ---
+run_case "oh-my-claudecode:writer, model 없음(원칙 5 → 차단)" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer"}}' 2
+run_case "oh-my-claudecode:writer + model haiku + effort low" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer","model":"haiku","effort":"low"}}' 0
+run_case "oh-my-claudecode:writer + model sonnet(기대 model 불일치 → 차단)" '{"tool_input":{"subagent_type":"oh-my-claudecode:writer","model":"sonnet","effort":"low"}}' 2
+run_case "oh-my-claudecode:planner + model opus + effort medium(effort 핀 없음 → 값 자유)" '{"tool_input":{"subagent_type":"oh-my-claudecode:planner","model":"opus","effort":"medium"}}' 0
 
-# --- B-11: tier + model 명시, 기대값과 일치 → 통과 (exit 0) ---
-run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku"}}' 0
-run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet"}}' 0
-run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 0
-run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus"}}' 0
-run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable"}}' 0
-run_case "tier executor-opus + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"executor-opus","model":"opus"}}' 0
+# --- 빌트인 statusline-setup: 기대값을 모르므로 유일한 생략 허용 타입 ---
+run_case "statusline-setup, model·effort 없음" '{"tool_input":{"subagent_type":"statusline-setup"}}' 0
+
+# --- B-11: tier + model 명시, 기대값과 일치(+ effort 핀 일치) → 통과 (exit 0) ---
+run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku","effort":"low"}}' 0
+run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"medium"}}' 0
+run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high"}}' 0
+run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high"}}' 0
+run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable","effort":"max"}}' 0
+run_case "E③ tier executor-max + model opus + effort high(기대값 일치)" '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high"}}' 0
+
+# --- B-12: effort 검증 — 모든 호출에 effort 필수, tier는 핀과 같은 값 ---
+run_case "E① tier executor-high + model sonnet, effort 없음 → 차단" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 2
+run_case "E② tier executor-med + model sonnet + effort high(핀 medium과 불일치) → 차단" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 2
+run_case "E⑤ 비핀 general-purpose + model sonnet + effort medium → 통과" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium"}}' 0
+run_case "B-12: 비핀 general-purpose + model sonnet, effort 없음 → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet"}}' 2
+run_case "B-12: effort 허용 밖 값 \"ultra\" → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"ultra"}}' 2
+run_case "B-12: effort 숫자 → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":3}}' 2
+run_case "B-12: tier effort \" high\"(앞 공백, trim 후 일치 → 통과)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":" high"}}' 0
+run_case "B-12: tier effort HIGH(대문자, 허용값 밖 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"HIGH"}}' 2
+run_case "B-12: ALLOW_TIER_MODEL_OVERRIDE=1 + executor-med effort high(불일치 → 통과)" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 0 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-12: ALLOW_INHERITED_SUBAGENT_MODEL=1 + executor-med effort high(불일치 → 여전히 차단)" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+run_case "B-12: ALLOW_INHERITED_SUBAGENT_MODEL=1 + general-purpose effort 없음(부재 우회 → 통과)" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet"}}' 0 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
 
 # --- B-11: tier + model 명시, 기대값과 불일치 → 차단 (exit 2, 조용한 강등/승급 봉인) ---
 # 주의: 이 두 케이스는 B-11 이전엔 "tier executor-high + model opus 명시"가
@@ -82,7 +111,7 @@ run_case "tier executor-opus + model opus(기대값 일치)" '{"tool_input":{"su
 # 의도된 동작 변경이지 회귀가 아니다.
 run_case "tier executor-high + model opus(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"opus"}}' 2
 run_case "tier judge-max + model opus(강등 시도 → 차단)" '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 2
-run_case "tier executor-opus + model sonnet(기대값 불일치 → 차단)" '{"tool_input":{"subagent_type":"executor-opus","model":"sonnet"}}' 2
+run_case "E④ tier executor-max + model sonnet(기대값 불일치 → 차단, B-11)" '{"tool_input":{"subagent_type":"executor-max","model":"sonnet","effort":"high"}}' 2
 
 # --- B-11: break-glass ALLOW_TIER_MODEL_OVERRIDE=1 → 불일치도 통과 ---
 run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + judge-max + model opus(불일치)" \
@@ -131,7 +160,7 @@ run_case "C10: judge-max + model FABLE(대문자, 불일치 → 차단)" \
 run_case "C10: judge-max + model claude-fable-5(전체 ID, 불일치 → 차단)" \
   '{"tool_input":{"subagent_type":"judge-max","model":"claude-fable-5"}}' 2
 run_case "C10: judge-max + model \" fable\"(앞 공백, trim 후 일치 → 통과)" \
-  '{"tool_input":{"subagent_type":"judge-max","model":" fable"}}' 0
+  '{"tool_input":{"subagent_type":"judge-max","model":" fable","effort":"max"}}' 0
 
 # --- fork 전용 분기: fork는 세션(메인) 모델을 상속하고 model 파라미터를
 # 무시한다 — 사유 토큰(prompt의 독립된 한 줄 `FORK_REASON: conversation-context`)이

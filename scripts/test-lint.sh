@@ -404,6 +404,49 @@ open(p, 'w', encoding='utf-8').write(t)
 "
 run_and_check "B-11: map 값이 frontmatter와 불일치 (FAIL 기대)" 1
 
+# 23. B-12: TIER_EXPECTED_EFFORT map 값이 frontmatter effort와 불일치 —
+# frontmatter는 high 그대로, map만 'medium'으로 드리프트된 상태. 이 map은
+# 훅이 tier effort 불일치를 차단할 때 쓰는 기준이라, 드리프트되면 정상 호출을
+# 막거나 잘못된 effort를 통과시킨다. 구버전 린터는 이 map을 읽지 않아 exit 0.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"high\",\n'
+new = '  \"executor-high\": \"medium\",\n'
+assert t.count(old) == 1, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, new, 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-12: effort map 값이 frontmatter와 불일치 (FAIL 기대)" 1
+
+# 24. B-12: TIER_EXPECTED_EFFORT map에서 tier 하나 누락 — 그 tier는 effort
+# 존재만 검사되고 값 검증(B-12)이 조용히 빠진다. 구버전 린터는 exit 0.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"executor-high\": \"high\",\n'
+assert t.count(old) == 1, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, '', 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "B-12: effort map에 tier 누락 (FAIL 기대)" 1
+
+# 25. 원칙 5: TIER_EXPECTED_MODEL의 네임스페이스 키(oh-my-claudecode:*)는
+# frontmatter 대조에서 빠지지만 pinned Set 등재는 확인한다 — Set에서만
+# 'oh-my-claudecode:writer'를 지운 상태는 FAIL이어야 한다.
+new_case
+python3 -c "
+p = '$CASE_DIR/hook.cjs'
+t = open(p, encoding='utf-8').read()
+old = '  \"oh-my-claudecode:writer\", // haiku\n'
+assert t.count(old) == 1, 'fixture 문자열을 찾지 못함 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace(old, '', 1)
+open(p, 'w', encoding='utf-8').write(t)
+"
+run_and_check "원칙 5: map의 네임스페이스 키가 pinned Set에 없음 (FAIL 기대)" 1
+
 # ===========================================================================
 # 음성 케이스 (PASS를 기대 — 종료코드 0)
 # ===========================================================================
@@ -451,12 +494,13 @@ python3 -c "
 import re
 p = '$CASE_DIR/hook.cjs'
 t = open(p, encoding='utf-8').read()
-# 정확히 한 번씩만 나타나는 종결 줄(Set의 ']);'와 map의 '};')을 세미콜론
-# 없는 형태로 바꾼다 — 내용은 그대로, 포매팅만 semi:false 스타일로.
+# 종결 줄(Set의 ']);' 1개, map의 '};' 2개 — TIER_EXPECTED_MODEL과
+# TIER_EXPECTED_EFFORT)을 세미콜론 없는 형태로 바꾼다 — 내용은 그대로,
+# 포매팅만 semi:false 스타일로.
 assert t.count('\n]);\n') == 1, 'fixture: Set 종결 줄이 정확히 1개가 아님 — 훅 포매팅이 바뀌었을 수 있음'
 t = t.replace('\n]);\n', '\n])\n', 1)
-assert t.count('\n};\n') == 1, 'fixture: map 종결 줄이 정확히 1개가 아님 — 훅 포매팅이 바뀌었을 수 있음'
-t = t.replace('\n};\n', '\n}\n', 1)
+assert t.count('\n};\n') == 2, 'fixture: map 종결 줄이 정확히 2개가 아님 — 훅 포매팅이 바뀌었을 수 있음'
+t = t.replace('\n};\n', '\n}\n')
 open(p, 'w', encoding='utf-8').write(t)
 "
 run_and_check "C7: 훅 세미콜론 없는(semi:false) 종결자 스타일 (PASS 기대)" 0

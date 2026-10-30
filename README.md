@@ -19,17 +19,17 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
   ├─ references/prompt-templates.md (조사용 / 구현용 / 대형 파일 구현용 프롬프트 템플릿 3종)
   └─ tier 에이전트 6종 (.claude/agents/*.md)
         explorer-low(haiku/low, 읽기전용) · executor-med(sonnet/medium)
-        · executor-high(sonnet/high) · executor-opus(opus/high) · reviewer-high(opus/high, Write/Edit 제외)
+        · executor-high(sonnet/high) · executor-max(opus/high) · reviewer-high(opus/high, Write/Edit 제외)
         · judge-max(fable/max, Write/Edit 제외)
               ↑ routing-matrix.md가 이 6종의 model+effort 조합을 가리킴
               ↑ 강제(기계적 차단)
         PreToolUse 훅: enforce-subagent-model.cjs
-              (matcher: Agent — tool_input.model 없으면 exit 2로 차단.
-               tier 호출에 model을 넘기면 그 tier의 고정값과 정확히
-               일치해야 통과 — 별칭 exact match, 대소문자·전체 모델 ID
-               불가, 불일치는 exit 2. 생략이 권장. break-glass 2종:
-               ALLOW_INHERITED_SUBAGENT_MODEL=1(model 미지정 차단 우회) /
-               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회), B-11;
+              (matcher: Agent — model·effort 없으면 exit 2로 차단(tier도
+               생략 금지, 규칙 원칙 5). tier 호출의 model·effort는 그 tier의
+               고정값과 정확히 일치해야 통과 — 별칭 exact match, 대소문자·전체
+               모델 ID 불가, 불일치는 exit 2(B-11·B-12). break-glass 2종:
+               ALLOW_INHERITED_SUBAGENT_MODEL=1(model·effort 미지정 차단 우회) /
+               ALLOW_TIER_MODEL_OVERRIDE=1(tier 값 불일치 차단 우회);
                subagent_type: fork는 prompt에 한 줄
                `FORK_REASON: conversation-context`가 없으면 exit 2 —
                fork는 세션 모델로 돌고 model을 무시하므로, break-glass로도 우회 불가)
@@ -45,7 +45,7 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 │   ├── skills/delegate-first/
 │   │   ├── SKILL.md
 │   │   └── references/{routing-matrix.md, prompt-templates.md}
-│   ├── agents/{explorer-low,executor-med,executor-high,executor-opus,reviewer-high,judge-max}.md
+│   ├── agents/{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md
 │   ├── hooks/enforce-subagent-model.cjs
 │   ├── rules/subagent-model-routing.md
 │   ├── settings.json                  (이 레포용 활성 훅 등록 — dogfood)
@@ -88,7 +88,7 @@ SKILL.md (원칙 + 0~5단계 체크리스트)
 
 > **`scripts/reinstall.sh`는 skills + tier 에이전트만 설치한다 — 훅 파일도, `settings.json` 등록도 하지 않는다(기본값 기준. `--propagate-global`을 줘도 훅/규칙을 **전역**(`$HOME/.claude`)에만 복사할 뿐 어느 경우든 `settings.json` 등록은 스크립트 밖의 사람 몫이다).** 스크립트만 돌리고 끝내면 강제(PreToolUse 차단)가 발효되지 않은 **반쪽 설치**다 — 위 2번을 반드시 별도로 수행한다.
 
-전역(`~/.claude`)에 새 tier(예: 2026-10-30 `executor-opus`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙·훅만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
+전역(`~/.claude`)에 새 tier(예: 2026-10-30 `executor-max`)까지 반영하려면 `--propagate-global`만으로는 부족하다 — 이 플래그는 규칙·훅만 복사하고 `agents/`·스킬은 복사하지 않는다. `bash scripts/reinstall.sh --dst "$HOME" --propagate-global`로 실행해(셸 스크립트는 `bash`로 호출한다) `~/.claude/agents/`와 `~/.claude/skills/delegate-first/`도 갱신한다. 실행 전에 전역 규칙 사본에만 있는 내용이 없는지 `diff`로 확인한다(덮어쓰기 전 백업은 스크립트가 출력하는 백업 경로에 남는다).
 
 ### A) 프로젝트 로컬 설치 (권장, 빠름)
 
@@ -99,7 +99,7 @@ SRC=<이 레포 경로>
 DST=<대상 프로젝트 경로>
 mkdir -p "$DST/.claude/skills" "$DST/.claude/agents" "$DST/.claude/hooks" "$DST/.claude/rules"
 cp -R "$SRC/.claude/skills/delegate-first" "$DST/.claude/skills/"
-cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,executor-opus,reviewer-high,judge-max}.md "$DST/.claude/agents/"
+cp "$SRC/.claude/agents/"{explorer-low,executor-med,executor-high,executor-max,reviewer-high,judge-max}.md "$DST/.claude/agents/"
 cp "$SRC/.claude/hooks/enforce-subagent-model.cjs" "$DST/.claude/hooks/"
 cp "$SRC/.claude/rules/subagent-model-routing.md" "$DST/.claude/rules/"
 cp "$SRC/.claude/settings.json.example" "$DST/.claude/"
@@ -159,9 +159,9 @@ skill + agents + hook을 하나의 Claude Code 플러그인 매니페스트로 �
 
 1. **스킬 로드 확인** — 설치한 프로젝트 세션에서 `/delegate-first`를 호출해 `SKILL.md` 본문이 그대로 로드되는지 확인한다.
 2. **훅 차단 스모크** — `model` 파라미터 **없이** Agent 툴을 즉석 호출한다. `enforce-subagent-model.cjs`가 exit 2로 차단하고 라우팅 안내를 stderr로 되돌려주는지 확인한다. (차단되지 않으면 훅이 `settings.json`에 등록되지 않은 것이다 — 단, 역은 성립하지 않는다: 차단됐다고 해서 **이 프로젝트**에 등록됐다는 뜻은 아니다. `~/.claude/settings.json`에 같은 훅이 **전역**으로 이미 등록돼 있으면, 이 프로젝트의 `.claude/settings.json`을 지워도 스모크는 그대로 통과한다(2026-08-18 실측 — 전역 등록만으로 차단됨). 전역 등록과 프로젝트 등록을 구분하려면 (a) 스모크 전에 전역 등록을 일시 비활성화하거나 (b) 프로젝트 훅 command를 래퍼로 감싸 stderr에 출처를 직접 찍는다 — 예: `{ "type": "command", "command": "sh -c 'echo \"[hook-src=project]\" >&2; exec node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/enforce-subagent-model.cjs\"'" }`. (이전에 검토했던 `--src=project` 같은 인자 부착 방식은 훅 스크립트가 인자를 무시해 stderr가 두 경로에서 동일하게 나오므로 출처 판별이 **성립하지 않는다** — 실제로 검증 가능한 것은 래퍼 방식뿐이다. 래퍼가 `exec` 직전에 자기 출처를 stderr에 찍으므로 훅 스크립트 자체를 고치지 않고도 확실히 동작한다.))
-3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`로 Agent를 1회 호출해 frontmatter의 `model`+`effort` 조합(haiku/low)이 실제로 적용되는지 확인한다 — B-06 해소로 이제 수행 가능하다. 단 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
+3. **tier 에이전트 스폰 1회** — `subagent_type: explorer-low`를 핀 값(`model: haiku`·`effort: low`)으로 명시해 1회 호출하고 haiku/low로 도는지 확인한다. 이어서 `model` 또는 `effort`를 빼고 호출하면 exit 2로 막히는 것이 정상이다(tier도 생략 통과가 없다). 아래 「전제: 발효 중인 훅 버전」을 먼저 읽을 것.
 
-**전제: 발효 중인 훅 버전**: B-06(정본 레포 PR #2)이 훅의 `MODEL_PINNED_TYPES`에 tier 에이전트 5종(explorer-low·executor-med·executor-high·reviewer-high·judge-max)을 추가해(이후 2026-10-30에 같은 목록에 `executor-opus`가 추가돼 현재 6종), tier 에이전트를 `model` 파라미터 없이 호출해도(=frontmatter의 model+effort 조합을 그대로 쓰려는 의도) 통과하도록 해소했다. **단 이것은 그 세션에서 실제로 발효 중인 훅이 이 레포의 최신 버전(tier 6종이 pinned에 포함된 버전)일 때만 성립한다.** 전역(`~/.claude/settings.json`)과 프로젝트(`.claude/settings.json`)의 동일 matcher(`Agent`) PreToolUse 훅은 **우선순위가 아니라 가산적으로 모두 실행되며, 등록된 훅 중 하나라도 exit 2면 차단**된다(훅 실행 **순서** 자체는 미확인이므로 순서를 단정하지 않는다). 즉 전역 `~/.claude/hooks/`에 tier 6종이 없는 구 버전이 남아 있으면, 그 구 버전이 exit 2를 반환해 프로젝트 쪽이 최신이어도 여전히 차단된다 — 오퍼레이터는 "발효 중인 하나만 갱신"이 아니라 **등록된 모든 사본**을 갱신해야 한다. 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 3번 스모크가 차단되면 먼저 발효 중인 훅 버전부터 확인한다.
+**전제: 발효 중인 훅 버전**: 2026-10-30 원칙 5로 tier 에이전트도 `model`·`effort` 생략 호출이 exit 2로 막힌다(과거 B-06은 pinned tier의 생략 통과를 허용했으나 폐지됐다). 정의를 아직 로드하지 못한 세션에서는 생략 호출이 세션 모델·effort를 상속하기 때문이다. **버전 불일치를 의심할 신호는 반대 방향이다** — 생략했는데 통과하거나, 핀 값을 명시했는데 막히는 경우다. 전역(`~/.claude/settings.json`)과 프로젝트(`.claude/settings.json`)의 동일 matcher(`Agent`) PreToolUse 훅은 **우선순위가 아니라 가산적으로 모두 실행되며, 등록된 훅 중 하나라도 exit 2면 차단**된다(훅 실행 **순서** 자체는 미확인이므로 순서를 단정하지 않는다). 즉 구 버전 사본이 한 벌이라도 남아 있으면 그 사본의 판정이 전체에 영향을 준다 — 오퍼레이터는 "발효 중인 하나만 갱신"이 아니라 **등록된 모든 사본**을 갱신해야 한다. 이 경우 필요한 것은 되돌리기가 아니라 전역 훅 갱신이다([docs/REINSTALL.md](docs/REINSTALL.md) §3의 훅 전파 단계 참고). 위 3번 스모크의 결과가 이 방향과 다르면 먼저 발효 중인 훅 버전부터 확인한다.
 
 ## 복구
 

@@ -24,7 +24,7 @@ The main session's model and reasoning-effort *setting* are the user's call (ses
 | Review of a subagent's output | Medium |
 | Judgment, design, or escalation diagnosis | Deep |
 
-Delegated effort is a separate matter, decided by [references/routing-matrix.md](references/routing-matrix.md) — not by this section. The execution path determines whether effort can even be specified: Workflow `agent()`'s `effort` param, `codex exec`'s `model_reasoning_effort`, or (for ad-hoc Agent calls) not at all — tier agents get effort from their frontmatter instead — see routing-matrix.md for details.
+Delegated effort is a separate matter, decided by [references/routing-matrix.md](references/routing-matrix.md) — not by this section. The execution path determines whether effort can even be specified: Workflow `agent()`'s `effort` param, `codex exec`'s `model_reasoning_effort`, or the Agent tool's `effort` param, which every Agent call must state (the hook blocks a missing `effort` with exit 2; a tier agent takes its frontmatter pin value) — see routing-matrix.md for details.
 
 ## Flow checklist
 
@@ -35,7 +35,7 @@ Delegation Progress:
 - [ ] 0. On invocation: check the actual model of delegations already in flight
 - [ ] 1. Decompose the task and classify its type
 - [ ] 2. Pick model + effort + execution path (routing-matrix.md) — if effort matters, prefer a tier agent or Workflow/codex path
-- [ ] 3. Delegate with a scoped prompt (prompt-templates.md) — and log it: agent/role/model/effort/path appended to the project delegation log (path is a per-project parameter — default docs/handoff/delegation-log.md, named in the installing project's CLAUDE.md); effort not specifiable on ad-hoc Agent calls → record "(default)"; record the effective model (see Step 3)
+- [ ] 3. Delegate with a scoped prompt (prompt-templates.md) — and log it: agent/role/model/effort/path appended to the project delegation log (path is a per-project parameter — default docs/handoff/delegation-log.md, named in the installing project's CLAUDE.md); every Agent call must state effort (hook exit 2 otherwise) → record the effort passed on the call; record the effective model (see Step 3)
 - [ ] 4. Review: don't trust self-report — reproduce key claims (grep/run)
 - [ ] 5. Judge: pass / re-delegate (strengthen prompt) / escalate
 ```
@@ -44,7 +44,7 @@ Delegation Progress:
 
 **Step 1 — Decompose & classify.** Split the task into units of one type each: exploration/extraction, doc editing/structuring, general implementation, first-pass review, adversarial verification/judgment, or architecture/legal/money/authorization.
 
-**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — ad-hoc Agent calls can't set effort, so decide before delegating, not at logging time. When calling a tier agent, prefer omitting `model` (passing a value now requires an exact match to that tier's pinned model or the hook blocks it with exit 2 — no more silent downgrade, per B-11) — this preference only holds when every registered hook's pinned list includes that tier, and a named spawn (passing `name`) does not preserve `effort` even so; see routing-matrix.md. `subagent_type: fork` runs on the session model and ignores `model`; use it only when the conversation itself is the input, add the line `FORK_REASON: conversation-context`, and never use it to get a bigger window or a stronger model (routing-matrix.md). For a `subagent_type` not in the routing table, follow the out-of-table procedure in routing-matrix.md at invocation time (read its definition's model/effort/tools and map the task type; if the definition does not pin `effort`, do not delegate to it — substitute a tier agent or Workflow `agent()`; only a type that pins `effort` is called directly, always with `model` set explicitly).
+**Step 2 — Route.** See [references/routing-matrix.md](references/routing-matrix.md) for model, effort, and execution path per task type. If effort matters for the outcome, pick a tier agent (`subagent_type`) or the Workflow `agent()` / `codex exec` path at this step — every Agent call must state effort (the hook blocks a missing one with exit 2), so decide before delegating, not at logging time. When calling a tier agent, pass both `model` and `effort` equal to that tier's pins — omitting either is blocked with exit 2, and a mismatch is blocked too (B-11 for model, B-12 for effort), because a definition the harness has not loaded yet would otherwise fall back to the session model and effort. Name spawns `<task>-<model>-<effort>`, and spawn types without a model/effort pin (`codex:*`, `oh-my-claudecode:*`, `general-purpose`) without a `name`, since a named spawn of those loses the call's `effort` (rule file principle 5; see routing-matrix.md). `subagent_type: fork` runs on the session model and ignores `model`; use it only when the conversation itself is the input, add the line `FORK_REASON: conversation-context`, and never use it to get a bigger window or a stronger model (routing-matrix.md). For a `subagent_type` not in the routing table, follow the out-of-table procedure in routing-matrix.md at invocation time (read its definition's model/effort/tools and map the task type; if the definition does not pin `effort`, do not delegate to it — substitute a tier agent or Workflow `agent()`; only a type that pins `effort` is called directly, always with `model` set explicitly).
 
 **Step 3 — Delegate.** See [references/prompt-templates.md](references/prompt-templates.md) for the three standard templates (read-only investigation, implementation/edit, large-file implementation). Every delegation prompt must state: role in one line, working directory + boundaries (what must not be touched), forbidden system-level commands, required evidence (an "it doesn't exist" claim must state the search scope), a completion checklist, the expected output format, and — for verdict/review delegations — a timebox.
 
@@ -66,7 +66,7 @@ When a subagent's output fails review, diagnose the cause before retrying:
 
 Always strengthen the prompt alongside any model upgrade — raising the model without fixing the prompt just repeats the same failure at higher cost.
 
-- Same root cause fails twice → escalate model/effort unconditionally on the retry (earlier when the rule file's escalation criteria ①–④ apply — see references/routing-matrix.md (c); implementation escalates to `executor-opus`).
+- Same root cause fails twice → escalate model/effort unconditionally on the retry (earlier when the rule file's escalation criteria ①–④ apply — see references/routing-matrix.md (c); implementation escalates to `executor-max`).
 - Fails a 3rd time → stop delegating, report the blocker to the user.
 
 ## Idle recovery

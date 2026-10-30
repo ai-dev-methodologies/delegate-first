@@ -24,6 +24,13 @@ Check A (B-07 + B-09 + B-11): `.claude/agents/*.md` frontmatter ↔
   FAIL로 표면화한다(예: pinned에는 있는 tier가 map에 없거나, map의 값이
   frontmatter model과 다른 경우 — 이건 훅이 조용히 잘못된 값으로 강등/승급을
   차단하거나 허용하게 만드는 새로운 드리프트 축이다).
+  map의 네임스페이스 키(`oh-my-claudecode:*` 등)는 이 레포 밖 플러그인
+  정의라 pinned Set 등재만 확인하고 frontmatter 대조는 하지 않는다.
+
+  B-12 보강: 훅의 `TIER_EXPECTED_EFFORT`(tier → 기대 effort 정적 map)도
+  같은 방식으로 파싱해, 이 레포 tier ↔ map 키 집합과 map 값 ↔
+  agents/*.md frontmatter effort가 어긋나면 FAIL로 표면화한다(map이
+  드리프트되면 훅이 정상 tier 호출을 막거나 잘못된 effort를 통과시킨다).
 
 Check B (B-02): 위임 로그(기본 docs/handoff/delegation-log.md)의 마크다운 표가
   `날짜 | agent | role | model | effort | 실행경로 | 결과` 7컬럼 스키마를
@@ -217,7 +224,6 @@ def build_name_index(agent_files: list, findings: list) -> dict:
 
 
 SET_START_RE = re.compile(r"new\s+Set\(\s*\[")
-MAP_START_RE = re.compile(r"TIER_EXPECTED_MODEL\s*=\s*\{")
 # C7: 종결자는 세미콜론 유무와 무관하게 인식한다(`]);`와 `])`, `};`와 `}`
 # 모두). 예전엔 리터럴 문자열 "]);"/"};" 서브스트링만 찾았는데, Prettier
 # `semi:false` 스타일(세미콜론 없음)로 포매팅되면 이 레포의 실제 포매팅과
@@ -348,7 +354,8 @@ def _scan_entries(text: str, line_no: int, entries: list, findings: list, hook_p
         entries.append((value, line_no))
 
 
-def _scan_map_entries(text: str, line_no: int, entries: list, findings: list, hook_path: Path) -> None:
+def _scan_map_entries(text: str, line_no: int, entries: list, findings: list, hook_path: Path,
+                      map_name: str = "TIER_EXPECTED_MODEL") -> None:
     """TIER_EXPECTED_MODEL 객체 블록의 한 줄(또는 종결자 앞 조각)을
     `key: value` 항목으로 분해한다(B-11/B-09). key와 value 모두 정적 문자열
     리터럴 하나여야 한다 — 계산된 프로퍼티(`[expr]: ...`), 식별자 키,
@@ -361,7 +368,7 @@ def _scan_map_entries(text: str, line_no: int, entries: list, findings: list, ho
         if not m:
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
-                f"TIER_EXPECTED_MODEL 항목을 'key: value' 형태(key는 정적 문자열 "
+                f"{map_name} 항목을 'key: value' 형태(key는 정적 문자열 "
                 f"리터럴)로 정적 파싱할 수 없음 — 계산된 키·비-리터럴 형태로 "
                 f"의심됨: {item!r}"))
             continue
@@ -370,19 +377,19 @@ def _scan_map_entries(text: str, line_no: int, entries: list, findings: list, ho
         if key_err:
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
-                f"TIER_EXPECTED_MODEL 키가 {key_err}"))
+                f"{map_name} 키가 {key_err}"))
             continue
         if not IDENT_RE.match(key_value):
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
-                f"TIER_EXPECTED_MODEL 키 이름이 예상 문자 집합([A-Za-z0-9:_.-])을 "
+                f"{map_name} 키 이름이 예상 문자 집합([A-Za-z0-9:_.-])을 "
                 f"벗어남: {key_value!r}"))
             continue
         val_value, val_err = classify_static_literal(value_raw)
         if val_err:
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
-                f"TIER_EXPECTED_MODEL['{key_value}'] 값이 {val_err}"))
+                f"{map_name}['{key_value}'] 값이 {val_err}"))
             continue
         entries.append((key_value, val_value, line_no))
 
@@ -432,8 +439,9 @@ def extract_pinned_types(hook_path: Path) -> tuple[list, list]:
     return entries, findings
 
 
-def extract_tier_expected_model(hook_path: Path) -> tuple:
-    """TIER_EXPECTED_MODEL 객체 리터럴에서 (key, value, line_no) 목록을
+def extract_tier_expected_model(hook_path: Path, map_name: str = "TIER_EXPECTED_MODEL") -> tuple:
+    """`map_name` 객체 리터럴(기본 TIER_EXPECTED_MODEL, B-12부터
+    TIER_EXPECTED_EFFORT에도 쓴다)에서 (key, value, line_no) 목록을
     추출한다(B-11). extract_pinned_types와 동일한 구조 — 진입한 줄의 나머지
     부분부터 바로 스캔하고(F3와 같은 종류의 함정 방지), 같은 줄에 종결자
     (`};`)가 있으면 그 자리에서 블록을 닫는다.
@@ -441,6 +449,7 @@ def extract_tier_expected_model(hook_path: Path) -> tuple:
     한계: 항목이 여러 줄에 걸쳐 쓰이면(예: key와 value가 다른 줄) 인식하지
     못한다 — 이 레포의 실제 포매팅(한 항목 = 한 줄)을 전제로 한다.
     """
+    map_start_re = re.compile(re.escape(map_name) + r"\s*=\s*\{")
     content = read_text_safe(hook_path)
     lines = content.splitlines()
     entries: list = []
@@ -453,25 +462,25 @@ def extract_tier_expected_model(hook_path: Path) -> tuple:
         code_line, in_block_comment = _strip_comments_stateful(raw_line, in_block_comment)
 
         if not in_block:
-            if "TIER_EXPECTED_MODEL" in code_line and MAP_START_RE.search(code_line):
+            if map_name in code_line and map_start_re.search(code_line):
                 in_block = True
-                start_m = MAP_START_RE.search(code_line)
+                start_m = map_start_re.search(code_line)
                 code_line = code_line[start_m.end():]
             else:
                 continue
 
         close_m = CLOSE_MAP_RE.search(code_line)
         if close_m:
-            _scan_map_entries(code_line[:close_m.start()], i, entries, findings, hook_path)
+            _scan_map_entries(code_line[:close_m.start()], i, entries, findings, hook_path, map_name)
             in_block = False
             closed = True
             break
-        _scan_map_entries(code_line, i, entries, findings, hook_path)
+        _scan_map_entries(code_line, i, entries, findings, hook_path, map_name)
 
     if in_block and not closed:
         findings.append(Finding(
             "FAIL", hook_path, None,
-            "TIER_EXPECTED_MODEL 객체 블록이 닫히지 않았다 — 파일 끝까지 "
+            f"{map_name} 객체 블록이 닫히지 않았다 — 파일 끝까지 "
             "'}' 종결자(세미콜론 유무 무관: '}' 또는 '};')를 찾지 못함 — 파싱 실패"))
 
     return entries, findings
@@ -512,10 +521,12 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
 
     name_index = build_name_index(agent_files, findings)
     pinned_names_seen = set()
+    pinned_namespaced = set()
 
     for name, line_no in pinned_entries:
         if ":" in name:
             # 네임스페이스 항목 — 이 레포 밖 정의, 검사 대상 제외.
+            pinned_namespaced.add(name)
             continue
         pinned_names_seen.add(name)
 
@@ -612,6 +623,15 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
     # 역방향: map에 있는 이름은 pinned Set에도, agents/ 정의 파일에도 있어야
     # 하고, map 값은 그 정의의 frontmatter model과 일치해야 한다.
     for name, (value, line_no) in map_dict.items():
+        if ":" in name:
+            # 네임스페이스 키(플러그인 정의) — 이 레포 agents/에 정의가 없으므로
+            # pinned Set 등재만 확인한다.
+            if name not in pinned_namespaced:
+                findings.append(Finding(
+                    "FAIL", hook_path, line_no,
+                    f"TIER_EXPECTED_MODEL['{name}']이 MODEL_PINNED_TYPES Set 목록에 없음 — "
+                    f"map과 pinned 목록이 서로 어긋남"))
+            continue
         if name not in pinned_names_seen:
             findings.append(Finding(
                 "FAIL", hook_path, line_no,
@@ -641,6 +661,63 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
                 f"TIER_EXPECTED_MODEL['{name}'] = {value!r}이 frontmatter model "
                 f"{fm_value!r}({agent_file})과 다름 — map이 드리프트됨, 훅의 "
                 f"강등/승급 차단 기준이 실제 tier 정의와 어긋나 있음"))
+
+    # -----------------------------------------------------------------
+    # B-12: TIER_EXPECTED_EFFORT map ↔ 이 레포 tier ↔ frontmatter effort.
+    # map 자체가 없으면 훅이 런타임에 ReferenceError로 죽어(exit 1 = 비차단)
+    # 조용히 fail-open되므로 비공허성 FAIL로 다룬다.
+    try:
+        effort_entries, effort_extract_findings = extract_tier_expected_model(
+            hook_path, "TIER_EXPECTED_EFFORT")
+    except ReadError as e:
+        findings.append(Finding("FAIL", hook_path, None, str(e)))
+        return findings
+    findings.extend(effort_extract_findings)
+
+    if not effort_entries:
+        findings.append(Finding(
+            "FAIL", hook_path, None,
+            "TIER_EXPECTED_EFFORT에서 유효 항목을 하나도 파싱하지 못함 — "
+            "비공허성 자기검사 실패, effort map↔frontmatter 교차검사 중단"))
+        return findings
+
+    effort_dict: dict = {}
+    for key, value, line_no in effort_entries:
+        if key in effort_dict:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_EFFORT에 '{key}' 항목이 중복으로 존재함"))
+            continue
+        effort_dict[key] = (value, line_no)
+
+    for name in sorted(pinned_names_seen):
+        if name in KNOWN_EXTERNAL_PINNED or name_index.get(name) is None:
+            continue
+        if name not in effort_dict:
+            findings.append(Finding(
+                "FAIL", hook_path, None,
+                f"pinned 목록의 tier '{name}'이 TIER_EXPECTED_EFFORT map에 없음 — "
+                f"이 tier에 대한 B-12 effort 값 검증이 조용히 미적용됨"))
+
+    for name, (value, line_no) in effort_dict.items():
+        entry = name_index.get(name)
+        if entry is None or name not in pinned_names_seen:
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_EFFORT['{name}']에 대응하는 pinned tier(이 레포 "
+                f"{agents_dir}의 정의 + MODEL_PINNED_TYPES 등재)가 없음"))
+            continue
+        agent_file, fm = entry
+        effort_entry = fm.get("effort")
+        if effort_entry is None:
+            continue  # 위에서 "model은 있으나 effort가 없음" WARN으로 이미 보고됨.
+        fm_value = effort_entry[0].strip()
+        if fm_value.lower() != value.strip().lower():
+            findings.append(Finding(
+                "FAIL", hook_path, line_no,
+                f"TIER_EXPECTED_EFFORT['{name}'] = {value!r}이 frontmatter effort "
+                f"{fm_value!r}({agent_file})과 다름 — map이 드리프트됨, 훅의 "
+                f"effort 차단 기준(B-12)이 실제 tier 정의와 어긋나 있음"))
 
     return findings
 
