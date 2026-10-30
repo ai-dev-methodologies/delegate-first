@@ -230,9 +230,26 @@ fi
 # 등록은 필요 없으므로 그 부재를 경고하지 않는다. 설치된 스킬의 훅 확인은 §4에서 한다.
 # 반대로 옛 settings.json·settings.local.json 등록이 남아 있으면 경고한다. 그 등록은
 # 이 스크립트가 지우지 않는다(전역 설정은 사람이 정리한다).
+# 등록은 hooks 아래 "command" 값에 enforce-subagent-model이 든 경우뿐이다.
+# permissions 항목의 언급은 등록이 아니다. node가 있으면 JSON을 파싱하고,
+# 없거나 파싱이 실패하면 "command" 값 grep으로 대신한다.
+old_hook_registered() {
+  local rc=0
+  if command -v node >/dev/null 2>&1; then
+    node -e '
+      let j;
+      try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { process.exit(2); }
+      const hit = (v) => Array.isArray(v) ? v.some(hit) : v !== null && typeof v === "object" &&
+        Object.keys(v).some((k) => (k === "command" && typeof v[k] === "string" &&
+          v[k].includes("enforce-subagent-model")) || hit(v[k]));
+      process.exit(j !== null && typeof j === "object" && hit(j.hooks) ? 0 : 1);' "$1" || rc=$?
+    [ "$rc" -eq 2 ] || return "$rc"
+  fi
+  grep -Eq '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*enforce-subagent-model' "$1"
+}
 for settings_file in "$GLOBAL_ROOT/.claude/settings.json" "$GLOBAL_ROOT/.claude/settings.local.json" \
   "$DST/.claude/settings.json" "$DST/.claude/settings.local.json"; do
-  if [ -f "$settings_file" ] && grep -q "enforce-subagent-model" "$settings_file"; then
+  if [ -f "$settings_file" ] && old_hook_registered "$settings_file"; then
     err "경고: 옛 settings 훅 등록(enforce-subagent-model)이 남아 있다: $settings_file"
     err "  스킬 호출 세션에서 훅이 이중 실행되고 낡은 사본도 판정에 참여한다. 이 파일에서 그 등록을 지운다."
   fi

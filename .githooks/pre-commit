@@ -20,10 +20,14 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.
 # GIT_CONFIG_COUNT·GIT_CONFIG_KEY_n·GIT_CONFIG_VALUE_n 설정도 지운다. 남기면 샌드박스
 # git이 그 설정(예 core.hooksPath)을 물려받는다. 레포 루트는 위에서 먼저 구했다.
 # 이 목록은 scripts/test-delegate-scripts.sh isolate_git_env와 같은 집합이다.
-# 회귀 검사: scripts/smoke-hook.sh ⑦.
+# `git rev-parse --local-env-vars` 출력을 모두 포함한다.
+# 회귀 검사: scripts/smoke-hook.sh ⑦, scripts/test-delegate-scripts.sh의
+# git_env_unset_lists_match_and_cover_local_env_vars·precommit_unsets_every_local_env_var.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX \
-  GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+  GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+  GIT_CONFIG GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS \
+  GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE
 for git_cfg_var in $(env | sed -n 's/^\(GIT_CONFIG_[A-Z]*_[0-9][0-9]*\)=.*/\1/p'); do
   unset "${git_cfg_var}"
 done

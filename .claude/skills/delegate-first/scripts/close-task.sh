@@ -78,36 +78,87 @@ fail() { echo "FAIL $*"; fails=$((fails + 1)); }
 # progress_returned <stem> — PROGRESS.md's 「회차」 table (columns as in
 # templates/PROGRESS.md: 회차 | order | 반환 | ...) has a row whose order
 # cell is exactly <stem> and whose 반환 cell is not empty. The section runs
-# from `## 회차` to the next `#`/`##` heading; rows under a `###` or deeper
-# subsection and lines inside ``` or ~~~ fences do not count. A 반환 cell
-# made only of whitespace (U+3000 too), -, —, 없음, (대기), 대기 and HTML
-# comments is empty.
+# from `## 회차` to the next `#`/`##` or setext (`---`/`===` under a text
+# line) heading. These do not count: rows under a `###` or deeper
+# subsection, lines inside ``` or ~~~ fences, lines indented 4+ columns, and
+# lines inside an HTML comment (a `<!--` left open on a line runs to the
+# next `-->`). A 반환 cell is empty when, with comments, `&nbsp;`, `<br>`,
+# empty code spans, NBSP, U+3000 and zero-width characters removed, it is a
+# run of the placeholders in PH (case-insensitive) or of dashes only.
+PH='없음
+대기
+(대기)
+대기 중
+미반환
+tbd
+todo
+n/a
+na
+pending'
 progress_returned() {
   [ -f "$dir/PROGRESS.md" ] &&
-    STEM="$1" awk -F'|' '
-      { t = $0; sub(/^(   |  | )/, "", t) }  # up to 3 spaces of indent
+    STEM="$1" PH="$PH" LC_ALL=C \
+    WS="$(printf '\302\240|\343\200\200|\342\200\200|\342\200\201|\342\200\202|\342\200\203|\342\200\204|\342\200\205|\342\200\206|\342\200\207|\342\200\210|\342\200\211|\342\200\212|\342\200\257|\342\201\237')" \
+    ZW="$(printf '\342\200\213|\342\200\214|\342\200\215|\342\201\240|\357\273\277|\302\255')" \
+    DASH="$(printf -- '-|\342\200\223|\342\200\224')" awk '
+      BEGIN { n = split(ENVIRON["PH"], p, "\n"); for (k = 1; k <= n; k++) PH[p[k]] = 1 }
+      # uncomment <s> — <s> without closed comments; an open one cuts the
+      # rest and sets incom.
+      function uncomment(s,   i, j, out) {
+        while ((i = index(s, "<!--")) > 0) {
+          out = out substr(s, 1, i - 1)
+          if (!(j = index(substr(s, i + 4), "-->"))) { incom = 1; return out }
+          s = substr(s, i + 4 + j + 2)
+        }
+        return out s
+      }
+      function dashes(w) { gsub(ENVIRON["DASH"], "", w); return w == "" }
+      function placeholders(s,   n, w, i) {
+        gsub(/`+[[:space:]]*`+/, " ", s)  # empty code spans
+        n = split(s, w, " ")
+        for (i = 1; i <= n; i++) {
+          if (i < n && ((w[i] " " w[i + 1]) in PH)) i++
+          else if (!(w[i] in PH) && !dashes(w[i])) return 0
+        }
+        return 1
+      }
+      function empty_cell(r,   z) {
+        r = tolower(r)
+        gsub(/&nbsp;|<br[[:space:]]*\/?>/, " ", r); gsub(ENVIRON["WS"], " ", r)
+        # a zero-width character may stand for a space or for nothing
+        z = r; gsub(ENVIRON["ZW"], " ", z); gsub(ENVIRON["ZW"], "", r)
+        return placeholders(z) || placeholders(r)
+      }
+      { sub(/\r$/, ""); t = $0; sub(/^(   |  | )/, "", t) }  # up to 3 spaces of indent
       fn {
         if (substr(t, 1, 1) == fc && match(t, /^(`+|~+)[[:space:]]*$/) &&
             match(t, /^(`+|~+)/) && RLENGTH >= fn) fn = 0
         next
       }
-      match(t, /^(```+|~~~+)/) { fc = substr(t, 1, 1); fn = RLENGTH; next }
+      incom {
+        if ((i = index($0, "-->")) > 0) { incom = 0; uncomment(substr($0, i + 3)) }
+        para = 0; next
+      }
+      match(t, /^(```+|~~~+)/) { fc = substr(t, 1, 1); fn = RLENGTH; para = 0; next }
+      t ~ /^<!--/ { uncomment(t); para = 0; next }  # HTML block: whole line
+      { t = uncomment($0); sub(/^(   |  | )/, "", t) }
+      t ~ /^[[:space:]]*$/ { para = 0; next }
+      t ~ /^[ \t]/ { next }  # 4+ columns: code, or a paragraph continuation
       match(t, /^#+([[:space:]]|$)/) {
         if (match(t, /^#+/) && RLENGTH <= 2) {
           insec = (t ~ /^## 회차[[:space:]]*$/); insub = 0
         } else insub = 1
-        next
+        para = 0; next
       }
-      !insec || insub || $0 !~ /^[[:space:]]*\|/ { next }
+      para && t ~ /^(=+|-+)[[:space:]]*$/ { insec = 0; para = 0; next }  # setext
+      t ~ /^[-*_ \t]+$/ { para = 0; next }  # thematic break
+      t !~ /^\|/ { para = 1; next }
       {
-        o = $3; r = $4
+        para = 0
+        if (!insec || insub) next
+        split(t, f, "|"); o = f[3]
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", o)
-        while ((i = index(r, "<!--")) > 0) {
-          j = index(substr(r, i + 4), "-->")
-          r = substr(r, 1, i - 1) (j ? substr(r, i + 4 + j + 2) : "")
-        }
-        gsub(/\(대기\)|대기|없음|—|-|　|[[:space:]]/, "", r)
-        if (o == ENVIRON["STEM"] && r != "") { found = 1; exit }
+        if (o == ENVIRON["STEM"] && !empty_cell(f[4])) { found = 1; exit }
       }
       END { exit !found }' "$dir/PROGRESS.md"
 }

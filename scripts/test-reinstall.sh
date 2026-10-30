@@ -650,7 +650,7 @@ f3_shape_case caseF3_empty_block_hooks_warns '---\nname: x\nhooks:\n---\nbody\n'
 # --- Case OLDREG (결정 ③): a leftover settings.json registration of the hook
 # (global $REINSTALL_HOME/.claude/settings.json·settings.local.json or the
 # target project's .claude/settings.json·settings.local.json) makes skill sessions run the hook twice, with the
-# stale copy also judging. §0 must name each file that still mentions
+# stale copy also judging. §0 must name each file whose hooks "command" names
 # enforce-subagent-model, and stay silent when neither does. ---
 {
   d="$(case_dir caseOldReg_present)"
@@ -694,6 +694,41 @@ f3_shape_case caseF3_empty_block_hooks_warns '---\nname: x\nhooks:\n---\nbody\n'
   else
     record "caseOldReg_absent_silent" FAIL "warned without a leftover registration (rc=$rc out=[$out])"
   fi
+
+  # Only a hooks "command" value naming the hook is a registration. A
+  # permissions entry that mentions the file is not, with node (JSON parse)
+  # or without it (PATH=/usr/bin:/bin, the "command" grep fallback).
+  for mode in node nonode; do
+    if [ "$mode" = nonode ]; then path_for_run="/usr/bin:/bin"; else path_for_run="$PATH"; fi
+    d="$(case_dir "caseOldReg_perm_$mode")"
+    mkdir -p "$d/home/.claude" "$d/dst/.claude"
+    for f in "$d/home/.claude/settings.json" "$d/home/.claude/settings.local.json" \
+      "$d/dst/.claude/settings.json" "$d/dst/.claude/settings.local.json"; do
+      printf '{\n  "permissions": {\n    "allow": [\n      "Read(.claude/hooks/enforce-subagent-model.cjs)"\n    ]\n  },\n  "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo ok"}]}]}\n}\n' > "$f"
+    done
+    out="$(PATH="$path_for_run" run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ] && ! echo "$out" | grep -qF "옛 settings 훅 등록"; then
+      record "caseOldReg_permission_entry_silent[$mode]" PASS
+    else
+      record "caseOldReg_permission_entry_silent[$mode]" FAIL "warned for a permissions entry (rc=$rc out=[$out])"
+    fi
+
+    d="$(case_dir "caseOldReg_cmd_$mode")"
+    mkdir -p "$d/home/.claude" "$d/dst/.claude"
+    echo '{}' > "$d/home/.claude/settings.json"
+    echo '{}' > "$d/home/.claude/settings.local.json"
+    echo '{}' > "$d/dst/.claude/settings.local.json"
+    printf '{\n  "permissions": {"allow": ["Bash(echo:*)"]},\n  "hooks": {\n    "PreToolUse": [\n      {\n        "matcher": "Agent",\n        "hooks": [\n          {\n            "type": "command",\n            "command": "node \\"$CLAUDE_PROJECT_DIR\\"/.claude/hooks/enforce-subagent-model.cjs"\n          }\n        ]\n      }\n    ]\n  }\n}\n' > "$d/dst/.claude/settings.json"
+    out="$(PATH="$path_for_run" run_reinstall "$d/home" --src "$REPO_ROOT" --dst "$d/dst" --dry-run 2>&1)"
+    rc=$?
+    n_warn="$(echo "$out" | grep -cF "옛 settings 훅 등록")"
+    if [ "$rc" -eq 0 ] && [ "$n_warn" -eq 1 ] && echo "$out" | grep -F "옛 settings 훅 등록" | grep -qF "$d/dst/.claude/settings.json"; then
+      record "caseOldReg_hooks_command_warns[$mode]" PASS
+    else
+      record "caseOldReg_hooks_command_warns[$mode]" FAIL "want exactly one warning naming the project settings.json (rc=$rc warnings=$n_warn out=[$out])"
+    fi
+  done
 }
 
 echo

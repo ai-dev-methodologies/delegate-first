@@ -276,8 +276,8 @@ B-16 수정으로 복원 범위가 좁아졌지만, custom-only 백업을 손상
 
 ## B-18 — 훅의 Agent 이름 규약 강제(수정됨)
 
-**상태**: 해결 (2026-10-30, 원칙 5 반영) — `enforce-subagent-model.cjs`가 이름 규약을 exit 2로 강제한다.
+**상태**: 해결 (2026-10-30, 원칙 5 반영). 이후 bc65c5a에서 훅 강제를 제거했고 지금은 `close-task.sh`의 발주문 파일명 검사와 「반환 뒤 대조」가 맡는다.
 
-tier 6종 호출은 `name`이 필수이고 형식은 `<작업>-<model>-<effort>`다. 두 토큰은 실제 적용값(핀, `ALLOW_TIER_MODEL_OVERRIDE=1`일 때는 호출값)과 같아야 한다. 핀 없는 타입(`general-purpose`·`oh-my-claudecode:*`·`codex:*` 등)에 `name`이 있으면 차단한다. 이름을 붙이면 호출 `effort`가 유실되어 세션 값을 상속하기 때문이다. 이름 필수·이름 금지는 어떤 break-glass로도 우회되지 않는다. 회귀는 `scripts/smoke-hook.sh`의 B-18 절이 고정한다.
+이름 규약은 `<작업>-<model>-<effort>`다. 두 토큰은 실제 적용값(핀, `ALLOW_TIER_MODEL_OVERRIDE=1`일 때는 호출값)과 같아야 한다. 핀 없는 타입(`general-purpose`·`oh-my-claudecode:*`·`codex:*` 등)에는 `name`을 붙이지 않는다. 이름을 붙이면 호출 `effort`가 유실되어 세션 값을 상속하기 때문이다. 훅은 이름을 검사하지 않는다. `close-task.sh`는 발주문 파일명(`orders/NN-<name>.md`)의 토큰 형식과 `- tier:` 핀 일치만 검사한다. 실제 Agent `name` 인자 대조와 핀 없는 타입의 이름 금지는 「반환 뒤 대조」(전사 확인)가 맡는다.
 
 훅의 B-12(effort 검증)는 이 문서의 B-12(named 스폰 관찰)와 번호가 겹친다. 전역 규칙 문구가 B-12를 쓰므로 유지한다.

@@ -22,12 +22,15 @@ set -uo pipefail  # no -e: run every case and tally results
 # (`git -c` sets GIT_CONFIG_PARAMETERS; GIT_CONFIG_COUNT·KEY_n·VALUE_n).
 # Inherited, they send every sandbox git init·config·add·commit into the
 # caller's repo or apply the caller's config (e.g. core.hooksPath) there.
-# Same set as .githooks/pre-commit.
+# Same set as .githooks/pre-commit; covers `git rev-parse --local-env-vars`
+# (locked by git_env_unset_lists_match_and_cover_local_env_vars below).
 isolate_git_env() {
   local git_cfg_var
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX \
-    GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+    GIT_NAMESPACE GIT_CEILING_DIRECTORIES GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+    GIT_CONFIG GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS \
+    GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE
   for git_cfg_var in $(env | sed -n 's/^\(GIT_CONFIG_[A-Z]*_[0-9][0-9]*\)=.*/\1/p'); do
     unset "${git_cfg_var}"
   done
@@ -250,6 +253,58 @@ else
   record new_repo_ignores_inherited_git_env FAIL "decoy before=[$before] after=[$after] sandbox-head=$(git -C "$d" rev-parse -q --verify HEAD)"
 fi
 
+# Drift lock for the two unset lists: .githooks/pre-commit and
+# isolate_git_env above must name the same variables, and together they must
+# cover every repo-local variable git itself lists (--local-env-vars).
+unset_list() {
+  awk '/unset GIT_DIR /{ on = 1 } on { print; if ($0 !~ /\\$/) exit }' "$1" |
+    tr ' \\' '\n\n' | grep '^GIT_' | sort -u
+}
+pc_list="$(unset_list "$REPO_ROOT/.githooks/pre-commit")"
+iso_list="$(unset_list "$SCRIPT_DIR/test-delegate-scripts.sh")"
+missing="$(git rev-parse --local-env-vars | sort -u | comm -23 - <(printf '%s\n' "$pc_list"))"
+if [ -n "$pc_list" ] && [ "$pc_list" = "$iso_list" ] && [ -z "$missing" ]; then
+  record git_env_unset_lists_match_and_cover_local_env_vars PASS
+else
+  record git_env_unset_lists_match_and_cover_local_env_vars FAIL "missing from pre-commit:[$(echo $missing)] pre-commit-only:[$(comm -23 <(printf '%s\n' "$pc_list") <(printf '%s\n' "$iso_list") | tr '\n' ' ')] isolate-only:[$(comm -13 <(printf '%s\n' "$pc_list") <(printf '%s\n' "$iso_list") | tr '\n' ' ')]"
+fi
+
+# The lists only help if they run first: this suite calls isolate_git_env
+# before it creates anything, and a copy of pre-commit run with every
+# --local-env-vars variable (and a GIT_CONFIG_KEY_0 pair) set hands none of
+# them to the suites it starts. The stubs only log the GIT_* names they see.
+iso_line="$(grep -n '^isolate_git_env$' "$SCRIPT_DIR/test-delegate-scripts.sh" | head -1 | cut -d: -f1)"
+sbx_line="$(grep -n '^SANDBOX_ROOT=' "$SCRIPT_DIR/test-delegate-scripts.sh" | head -1 | cut -d: -f1)"
+if [ -n "$iso_line" ] && [ -n "$sbx_line" ] && [ "$iso_line" -lt "$sbx_line" ]; then
+  record suite_isolates_git_env_before_sandbox PASS
+else
+  record suite_isolates_git_env_before_sandbox FAIL "isolate_git_env call line=[$iso_line] SANDBOX_ROOT line=[$sbx_line]"
+fi
+pcb="$SANDBOX_ROOT/precommit-bait"
+mkdir -p "$pcb/.githooks" "$pcb/scripts"
+cp "$REPO_ROOT/.githooks/pre-commit" "$pcb/.githooks/pre-commit"
+printf 'import sys\nsys.exit(0)\n' > "$pcb/scripts/lint-delegate-first.py"
+for s in test-lint smoke-hook test-reinstall test-delegate-scripts; do
+  printf '%s\n' 'echo ran >> "$BAIT_LOG"' \
+    'env | sed -n "s/^\(GIT_[A-Z0-9_]*\)=.*/\1/p" >> "$BAIT_LOG"' > "$pcb/scripts/$s.sh"
+done
+: > "$pcb/env.log"
+bait_vars="$(git rev-parse --local-env-vars) GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0"
+(
+  for v in $bait_vars; do export "$v=$pcb/nonexistent"; done
+  export GIT_CONFIG_COUNT=1
+  BAIT_LOG="$pcb/env.log" bash "$pcb/.githooks/pre-commit"
+) >/dev/null 2>&1
+pc_rc=$?
+leaked=""
+for v in $bait_vars; do grep -qx "$v" "$pcb/env.log" && leaked="$leaked $v"; done
+ran="$(grep -c '^ran$' "$pcb/env.log")"
+if [ "$pc_rc" -eq 0 ] && [ "$ran" -eq 4 ] && [ -z "$leaked" ]; then
+  record precommit_unsets_every_local_env_var PASS
+else
+  record precommit_unsets_every_local_env_var FAIL "rc=$pc_rc stubs-ran=$ran/4 leaked:[${leaked# }]"
+fi
+
 # -------------------------------------------------------------- close-task
 
 d="$(task_repo c1)"
@@ -401,7 +456,7 @@ progress_raw() {
     echo "## 회차"
     echo "| 회차 | order | 반환 | R1 | R2 | 판정 |"
     echo "|---|---|---|---|---|---|"
-    printf "$2"
+    printf -- "$2"
   } > "$1/PROGRESS.md"
 }
 
@@ -497,6 +552,68 @@ write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
 progress_raw "$d/.delegate/$SLUG" '### 예시\n| 1 | 01-review-opus-high | 반환 요약 | | | |\n'
 run_close "$d" "$SLUG"
 expect close_readonly_row_in_round_subsection_fails 1 '^FAIL pair .*01-review-opus-high'
+
+# progress_case <case> <rc> <text> — one reviewer-high order with no output
+# and PROGRESS.md built by progress_raw from <text>; rc 1 expects the pair
+# FAIL line, rc 0 expects no FAIL line.
+pc_i=0
+progress_case() {
+  pc_i=$((pc_i + 1))
+  d="$(task_repo "c17r$pc_i")"
+  write_order "$d/.delegate/$SLUG/orders/01-review-opus-high.md" reviewer-high
+  progress_raw "$d/.delegate/$SLUG" "$3"
+  run_close "$d" "$SLUG"
+  if [ "$2" -eq 0 ]; then
+    expect "$1" 0 "" '^FAIL'
+  else
+    expect "$1" 1 '^FAIL pair .*01-review-opus-high'
+  fi
+}
+ROW='| 1 | 01-review-opus-high | 반환 요약 | | | |\n'
+
+# A1: lines inside an HTML comment block (`<!--` … `-->` over several lines,
+# or opened mid-line and left open) are neither headings nor table rows.
+progress_case close_readonly_row_in_multiline_comment_fails 1 "<!--\n$ROW-->\n"
+progress_case close_readonly_row_in_indented_comment_block_fails 1 "   <!-- 보관\n$ROW   -->\n"
+progress_case close_readonly_row_after_unclosed_inline_comment_fails 1 "| 1 | 02-x-opus-high | 메모 <!-- 보관 | | | |\n$ROW-->\n"
+progress_case close_readonly_return_cut_by_unclosed_comment_fails 1 '| 1 | 01-review-opus-high | <!-- 반환 요약 | | | |\n'
+progress_case close_readonly_row_on_comment_end_line_fails 1 "<!--\n-->$ROW"
+progress_case close_readonly_commented_round_heading_fails 1 "## Open Items\n<!--\n## 회차\n-->\n$ROW"
+progress_case close_commented_heading_does_not_end_round_section_passes 0 "<!--\n## Open Items\n-->\n$ROW"
+progress_case close_comment_inside_fence_is_literal_passes 0 "\`\`\`\n<!--\n\`\`\`\n$ROW"
+
+# A2: a 반환 cell is empty when, after removing comments, NBSP·U+3000 and
+# the zero-width characters, `&nbsp;`, `<br>` and empty code spans, it equals
+# a placeholder (case-insensitive) or is a run of them. Partial removal never
+# turns a placeholder such as 「대기 중」 into a value.
+i=0
+for ret in '대기 중' '미반환' 'TBD' 'todo' 'N/A' 'na' 'Pending' '–' '---' \
+  '&nbsp;' '&NBSP;' '<br>' '<BR/>' '<br />' '``' '` `' \
+  '\342\200\213' '\302\240' '\342\200\215' '\357\273\277' '`\342\200\213`' \
+  '대기\342\200\213중' '\302\240(대기)\302\240' '대기&nbsp;중' '— 대기 중' 'TBD<br>미반환'; do
+  i=$((i + 1))
+  progress_case "close_readonly_placeholder_return_fails[$i:$ret]" 1 "| 1 | 01-review-opus-high | $ret | | | |\n"
+done
+for ret in '대기열 3건 처리' 'NAS 점검 완료' 'pending 0건' '`없음`이 아닌 H 1건' 'H 0건<br>R1 통과'; do
+  progress_case "close_readonly_real_return_passes[$ret]" 0 "| 1 | 01-review-opus-high | $ret | | | |\n"
+done
+
+# A3: a line indented four or more columns is an indented code block line,
+# not a table row; up to three spaces still count.
+progress_case close_readonly_row_indented_4_spaces_fails 1 "    $ROW"
+progress_case close_readonly_row_indented_tab_fails 1 "\t$ROW"
+progress_case close_readonly_row_indented_3_spaces_passes 0 "   $ROW"
+
+# A4: a setext heading (a text line underlined with `---` or `===`) ends the
+# 회차 section like `#`/`##`; a table delimiter row and a thematic break after
+# a blank line do not.
+progress_case close_readonly_row_after_setext_h2_fails 1 "Open Items\n---\n$ROW"
+progress_case close_readonly_row_after_setext_h1_fails 1 "부록\n===\n$ROW"
+progress_case close_readonly_row_after_indented_setext_fails 1 "Open Items\n   -   \n$ROW"
+progress_case close_thematic_break_after_blank_keeps_section_passes 0 "\n---\n$ROW"
+progress_case close_rule_after_table_keeps_section_passes 0 "---\n$ROW"
+progress_case close_setext_underline_in_fence_keeps_section_passes 0 "\`\`\`\nOpen Items\n---\n\`\`\`\n$ROW"
+progress_case close_delimiter_row_is_not_setext_passes 0 "| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n$ROW"
 
 # M2: files that are not NN-<name>.md must fail instead of being skipped
 d="$(task_repo c18)"
