@@ -76,12 +76,18 @@ run_case "oh-my-claudecode:planner + model opus + effort medium(effort 핀 없�
 run_case "statusline-setup, model·effort 없음" '{"tool_input":{"subagent_type":"statusline-setup"}}' 0
 
 # --- B-11: tier + model 명시, 기대값과 일치(+ effort 핀 일치) → 통과 (exit 0) ---
-run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku","effort":"low"}}' 0
-run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"medium"}}' 0
-run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high"}}' 0
-run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high"}}' 0
-run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable","effort":"max"}}' 0
-run_case "E③ tier executor-max + model opus + effort high(기대값 일치)" '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high"}}' 0
+# 주의(B-18): 이 6건과 아래 tier 통과 케이스 4건(B-12 " high", B-12 override,
+# B-11 override, C10 " fable")은 B-18 이전엔 name 없이 exit 0을 기대했었다.
+# B-18이 tier에 이름 규약 `<작업>-<model>-<effort>`를 요구하므로 각 케이스의
+# 원래 검사 목적(B-11·B-12 통과 경로)을 유지하도록 규약에 맞는 name을 넣었다
+# — name 없는 같은 입력은 이제 exit 2이고, 그 경로는 아래 B-18 절이 고정한다.
+# 의도된 동작 변경이지 회귀가 아니다.
+run_case "tier explorer-low + model haiku(기대값 일치)" '{"tool_input":{"subagent_type":"explorer-low","model":"haiku","effort":"low","name":"t-haiku-low"}}' 0
+run_case "tier executor-med + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"medium","name":"t-sonnet-medium"}}' 0
+run_case "tier executor-high + model sonnet(기대값 일치)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"t-sonnet-high"}}' 0
+run_case "tier reviewer-high + model opus(기대값 일치)" '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high","name":"t-opus-high"}}' 0
+run_case "tier judge-max + model fable(기대값 일치)" '{"tool_input":{"subagent_type":"judge-max","model":"fable","effort":"max","name":"t-fable-max"}}' 0
+run_case "E③ tier executor-max + model opus + effort high(기대값 일치)" '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"t-opus-high"}}' 0
 
 # --- B-12: effort 검증 — 모든 호출에 effort 필수, tier는 핀과 같은 값 ---
 run_case "E① tier executor-high + model sonnet, effort 없음 → 차단" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet"}}' 2
@@ -90,10 +96,10 @@ run_case "E⑤ 비핀 general-purpose + model sonnet + effort medium → 통과"
 run_case "B-12: 비핀 general-purpose + model sonnet, effort 없음 → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet"}}' 2
 run_case "B-12: effort 허용 밖 값 \"ultra\" → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"ultra"}}' 2
 run_case "B-12: effort 숫자 → 차단" '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":3}}' 2
-run_case "B-12: tier effort \" high\"(앞 공백, trim 후 일치 → 통과)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":" high"}}' 0
+run_case "B-12: tier effort \" high\"(앞 공백, trim 후 일치 → 통과)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":" high","name":"t-sonnet-high"}}' 0
 run_case "B-12: tier effort HIGH(대문자, 허용값 밖 → 차단)" '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"HIGH"}}' 2
 run_case "B-12: ALLOW_TIER_MODEL_OVERRIDE=1 + executor-med effort high(불일치 → 통과)" \
-  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 0 \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"t-sonnet-high"}}' 0 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
 run_case "B-12: ALLOW_INHERITED_SUBAGENT_MODEL=1 + executor-med effort high(불일치 → 여전히 차단)" \
   '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 2 \
@@ -115,7 +121,7 @@ run_case "E④ tier executor-max + model sonnet(기대값 불일치 → 차단, 
 
 # --- B-11: break-glass ALLOW_TIER_MODEL_OVERRIDE=1 → 불일치도 통과 ---
 run_case "ALLOW_TIER_MODEL_OVERRIDE=1 + judge-max + model opus(불일치)" \
-  '{"tool_input":{"subagent_type":"judge-max","model":"opus"}}' 0 \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus","name":"t-opus-max"}}' 0 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
 
 # --- B-11: ALLOW_TIER_MODEL_OVERRIDE=1은 "model 미지정 + non-pinned 차단" 경로엔 적용 안 됨(범위 한정 확인) ---
@@ -160,7 +166,7 @@ run_case "C10: judge-max + model FABLE(대문자, 불일치 → 차단)" \
 run_case "C10: judge-max + model claude-fable-5(전체 ID, 불일치 → 차단)" \
   '{"tool_input":{"subagent_type":"judge-max","model":"claude-fable-5"}}' 2
 run_case "C10: judge-max + model \" fable\"(앞 공백, trim 후 일치 → 통과)" \
-  '{"tool_input":{"subagent_type":"judge-max","model":" fable","effort":"max"}}' 0
+  '{"tool_input":{"subagent_type":"judge-max","model":" fable","effort":"max","name":"t-fable-max"}}' 0
 
 # --- fork 전용 분기: fork는 세션(메인) 모델을 상속하고 model 파라미터를
 # 무시한다 — 사유 토큰(prompt의 독립된 한 줄 `FORK_REASON: conversation-context`)이
@@ -195,6 +201,87 @@ run_case "fork, 사유 없음 + ALLOW_TIER_MODEL_OVERRIDE=1 → 여전히 차단
   '{"tool_input":{"subagent_type":"fork","model":"opus","prompt":"분석"}}' 2 \
   "ALLOW_TIER_MODEL_OVERRIDE=1"
 
+# --- B-18: 이름 규약 `<작업>-<model>-<effort>`(원칙 5) ---
+# effort까지 핀된 tier 6종(TIER_EXPECTED_EFFORT 키)은 name 필수·토큰은 실제
+# 적용값과 일치. 그 밖의 타입(OMC 7종 포함 — frontmatter에 effort 핀 없음)은
+# name이 있으면 차단. fork·statusline-setup은 이름 검사 대상이 아니다.
+# 이름 필수·이름 금지는 어떤 break-glass로도 우회되지 않는다.
+run_case "B-18: tier executor-high + 올바른 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"p5-fix-sonnet-high"}}' 0
+run_case "B-18: tier reviewer-high + 올바른 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high","name":"x-opus-high"}}' 0
+run_case "B-18: tier executor-max + 작업 토큰에 하이픈·밑줄 → 통과" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"k289_rr-fix-opus-high"}}' 0
+run_case "B-18: tier + 이름 없음 → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high"}}' 2
+run_case "B-18: tier + 토큰 순서 뒤바뀜(x-high-opus) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-high-opus"}}' 2
+run_case "B-18: tier + model 토큰 불일치(x-opus-high, 핀 sonnet) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-opus-high"}}' 2
+run_case "B-18: tier + effort 토큰 불일치(x-sonnet-medium, 핀 high) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 2
+run_case "B-18: tier + 작업 토큰 없음(opus-high) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"opus-high"}}' 2
+run_case "B-18: tier + 작업 토큰 빈 값(-opus-high) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"-opus-high"}}' 2
+run_case "B-18: tier + 작업 토큰이 밑줄로 시작(_x-opus-high) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"_x-opus-high"}}' 2
+run_case "B-18: tier + 대문자 토큰(x-OPUS-HIGH) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-OPUS-HIGH"}}' 2
+run_case "B-18: tier + 토큰 뒤 추가 텍스트(x-opus-high-2) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"x-opus-high-2"}}' 2
+run_case "B-18: tier + name 공백만 → 차단(없음으로 본다)" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":"  "}}' 2
+run_case "B-18: tier + name 빈 문자열 → 차단(없음으로 본다)" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":""}}' 2
+run_case "B-18: tier + name 숫자 → 차단" \
+  '{"tool_input":{"subagent_type":"executor-max","model":"opus","effort":"high","name":123}}' 2
+run_case "B-18: general-purpose + 이름 → 차단" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium","name":"x-sonnet-medium"}}' 2
+run_case "B-18: general-purpose 무명 → 통과" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium"}}' 0
+run_case "B-18: general-purpose + name 공백만 → 통과(없음으로 본다)" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"medium","name":" "}}' 0
+run_case "B-18: oh-my-claudecode:executor + 이름 → 차단(effort 핀 없음)" \
+  '{"tool_input":{"subagent_type":"oh-my-claudecode:executor","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2
+run_case "B-18: oh-my-claudecode:executor 무명 → 통과" \
+  '{"tool_input":{"subagent_type":"oh-my-claudecode:executor","model":"sonnet","effort":"high"}}' 0
+run_case "B-18: codex:codex-rescue + 이름 → 차단" \
+  '{"tool_input":{"subagent_type":"codex:codex-rescue","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2
+run_case "B-18: fork + FORK_REASON + 이름 → 기존 fork 판정(통과)" \
+  '{"tool_input":{"subagent_type":"fork","name":"x-opus-high","prompt":"FORK_REASON: conversation-context\n작업"}}' 0
+run_case "B-18: fork + 사유 없음 + 이름 → 기존 fork 판정(차단)" \
+  '{"tool_input":{"subagent_type":"fork","name":"x-opus-high","prompt":"작업"}}' 2
+run_case "B-18: statusline-setup + 이름 → 통과(기존처럼)" \
+  '{"tool_input":{"subagent_type":"statusline-setup","name":"x-sonnet-high"}}' 0
+# break-glass 경계: ALLOW_TIER_MODEL_OVERRIDE=1이면 이름 토큰을 핀이 아니라
+# 실제 호출 model·effort와 대조한다(이름은 실제 적용값을 보여 줘야 하므로).
+# 이름 필수·이름 금지는 우회하지 않는다.
+run_case "B-18: OVERRIDE + executor-med effort high + 이름이 호출값(x-sonnet-high) → 통과" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 0 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-18: OVERRIDE + executor-med effort high + 이름이 핀값(x-sonnet-medium) → 차단" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high","name":"x-sonnet-medium"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-18: OVERRIDE + judge-max model opus effort max + 이름 x-fable-max(핀값) → 차단" \
+  '{"tool_input":{"subagent_type":"judge-max","model":"opus","effort":"max","name":"x-fable-max"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-18: OVERRIDE + tier 이름 없음 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"executor-med","model":"sonnet","effort":"high"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-18: OVERRIDE + general-purpose + 이름 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"high","name":"x-sonnet-high"}}' 2 \
+  "ALLOW_TIER_MODEL_OVERRIDE=1"
+run_case "B-18: INHERITED + general-purpose model 없음 + 이름 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"general-purpose","name":"x-sonnet-high"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+run_case "B-18: INHERITED + tier model 없음 + 이름 없음 → 여전히 차단" \
+  '{"tool_input":{"subagent_type":"explorer-low"}}' 2 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+run_case "B-18: INHERITED + tier model·effort 없음 + 핀값 이름 → 통과" \
+  '{"tool_input":{"subagent_type":"explorer-low","name":"x-haiku-low"}}' 0 \
+  "ALLOW_INHERITED_SUBAGENT_MODEL=1"
+
 # --- 파싱 불가/빈 stdin: 설계된 fail-open ---
 run_case "비JSON stdin" 'not json {' 0
 run_case "빈 stdin" '' 0
@@ -215,6 +302,25 @@ else
   FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
   - fork 통과 케이스 stderr에 'effective model' 안내 없음 (실제 stderr: ${fork_stderr:-<비어있음>})"
 fi
+
+# --- B-18 차단 메시지 문구 검사 (기대 이름 예시·원칙 5 안내가 유지되는지) ---
+check_stderr() {
+  desc="$1"; input="$2"; needle="$3"
+  err=$(printf '%s' "$input" | node "$HOOK_PATH" 2>&1 >/dev/null)
+  if printf '%s' "$err" | grep -qF -- "$needle"; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+  else
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILED_DESCRIPTIONS="${FAILED_DESCRIPTIONS}
+  - ${desc}: stderr에 '${needle}' 없음 (실제 stderr: ${err:-<비어있음>})"
+  fi
+}
+check_stderr "B-18 tier 이름 없음 메시지에 기대 이름 예시" \
+  '{"tool_input":{"subagent_type":"reviewer-high","model":"opus","effort":"high"}}' "<작업>-opus-high"
+check_stderr "B-18 tier 토큰 불일치 메시지에 기대 이름 예시" \
+  '{"tool_input":{"subagent_type":"executor-high","model":"sonnet","effort":"high","name":"x-high-sonnet"}}' "<작업>-sonnet-high"
+check_stderr "B-18 핀 없는 타입 이름 메시지" \
+  '{"tool_input":{"subagent_type":"general-purpose","model":"sonnet","effort":"low","name":"x"}}' "핀 없는 타입은 이름 없이 띄운다"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if [ "$FAIL_COUNT" -eq 0 ]; then

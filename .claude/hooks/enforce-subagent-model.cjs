@@ -45,6 +45,17 @@
  *     (tier의 model·effort 값 불일치만 허용 — 의도적으로 다른 값을 쓰고 싶은
  *     경우, 예: judge-max를 실험적으로 opus로 낮춰 비용 비교). 이 값은
  *     Claude가 스스로 설정하지 않는다.
+ *   - 이름 규약(B-18, 원칙 5): 위 판정을 통과한 호출은 break-glass로 통과한
+ *     경우까지 전부 마지막에 이름 검사를 거친다(exit 0 지점은 모두
+ *     passWithNameCheck 하나다). TIER_EXPECTED_EFFORT 키(effort까지 핀된
+ *     tier)는 name이 `<작업>-<model>-<effort>`여야 하고, 두 토큰은 실제
+ *     적용값(호출에 있으면 호출값, 없으면 핀)과 같아야 한다 — override가
+ *     없으면 B-11·B-12가 호출값 = 핀을 이미 보장하므로 핀과 대조하는 것과
+ *     같다. 그 밖의 타입(effort 핀 없음)은 name이 있으면 차단한다(named
+ *     스폰은 호출 effort를 잃고 세션 effort를 상속한다 — 실측). 빈
+ *     문자열·공백만인 name은 없음으로 본다. 이름 필수·이름 금지는 어떤
+ *     break-glass로도 우회되지 않는다. fork·statusline-setup은 이 검사
+ *     앞에서 끝난다.
  *
  * 공급망 서약 (README.md "훅 공급망 고지"와 동일 계약):
  *   이 훅은 레포에 커밋되어 배포되고, 헤드리스(-p/SDK) 세션에서는 workspace
@@ -145,7 +156,8 @@ const TIER_EXPECTED_MODEL = {
 // frontmatter의 effort를 직접 읽어 확인한 것이다. 플러그인 정의형은 effort
 // 핀을 모르므로 제외한다(존재만 요구). TIER_EXPECTED_MODEL과 같은 정적
 // 하드코딩이라 scripts/lint-delegate-first.py Check A가 이 map ↔ agents/*.md
-// frontmatter effort 정합성을 검사한다.
+// frontmatter effort 정합성을 검사한다. 이 map의 키 집합은 B-18의 「이름 필수
+// tier」이기도 하다 — 키에 없는 타입은 name이 있으면 차단된다.
 const TIER_EXPECTED_EFFORT = {
   "explorer-low": "low",
   "executor-med": "medium",
@@ -163,6 +175,10 @@ const EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh", "max"]);
 // 그래서 모든 호출은 model·effort를 명시하고, tier는 핀과 같은 값이어야 한다.
 // 유일한 예외는 statusline-setup(빌트인, 값 미상)뿐이다.
 const OMIT_ALLOWED_TYPES = new Set(["statusline-setup"]);
+
+// B-18 이름 규약의 <작업> 토큰. 마지막 두 토큰(model·effort)은 기대값으로
+// 만든 접미사와 정확히 일치해야 하므로 여기서는 <작업> 부분만 검사한다.
+const NAME_TASK_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 // fork 호출의 유일한 허용 사유 — prompt 안에서 독립된 한 줄(줄 앞뒤 공백/탭만
 // 허용)이어야 한다. 줄 중간 언급·다른 사유 값은 매치하지 않는다.
@@ -216,6 +232,59 @@ process.stdin.on("end", () => {
   const effort = toolInput.effort;
   const hasEffort = typeof effort === "string" && EFFORT_VALUES.has(effort.trim());
 
+  // B-18 — 통과 직전 이름 검사. 아래의 모든 exit 0(break-glass 포함)은 이
+  // 함수로만 나간다. env를 평가하지 않는다(이름 필수·이름 금지는 우회 불가).
+  const passWithNameCheck = () => {
+    const name = toolInput.name;
+    const hasName =
+      name !== undefined &&
+      name !== null &&
+      !(typeof name === "string" && !name.trim());
+    const isEffortPinned = Object.prototype.hasOwnProperty.call(
+      TIER_EXPECTED_EFFORT,
+      subagentType
+    );
+    if (!isEffortPinned) {
+      if (!hasName) process.exit(0);
+      process.stderr.write(
+        [
+          `[subagent-model-routing] 핀 없는 타입 '${subagentType}' 호출에 name이 있습니다(B-18).`,
+          "  핀 없는 타입은 이름 없이 띄운다(원칙 5). 이름이 필요하면 핀 tier를 써라.",
+          "  이유: name을 붙인 스폰은 호출 effort가 유실되어 세션 effort를 상속합니다(실측).",
+          "  핀 tier: explorer-low · executor-med · executor-high · reviewer-high · executor-max · judge-max (name은 <작업>-<model>-<effort>).",
+          "  이 차단은 ALLOW_INHERITED_SUBAGENT_MODEL / ALLOW_TIER_MODEL_OVERRIDE 로도 우회되지 않습니다.",
+        ].join("\n")
+      );
+      process.exit(2);
+    }
+    // 실제 적용값: 호출에 있으면 호출값(override 경로), 없으면 핀
+    // (ALLOW_INHERITED_SUBAGENT_MODEL 경로).
+    const effModel = hasModel ? model.trim() : TIER_EXPECTED_MODEL[subagentType];
+    const effEffort = hasEffort ? effort.trim() : TIER_EXPECTED_EFFORT[subagentType];
+    const suffix = `-${effModel}-${effEffort}`;
+    const expectedForm = `<작업>${suffix}`;
+    if (
+      hasName &&
+      typeof name === "string" &&
+      name.endsWith(suffix) &&
+      NAME_TASK_RE.test(name.slice(0, -suffix.length))
+    ) {
+      process.exit(0);
+    }
+    process.stderr.write(
+      [
+        hasName
+          ? `[subagent-model-routing] tier '${subagentType}' 호출의 name이 이름 규약과 다릅니다(B-18): ${JSON.stringify(name)}`
+          : `[subagent-model-routing] tier '${subagentType}' 호출에 name이 없습니다 — tier는 이름 필수(B-18, 원칙 5).`,
+        `  기대 이름: ${expectedForm} (예: p5-fix${suffix})`,
+        "  <작업>은 영문·숫자로 시작하는 [A-Za-z0-9_-] 토큰이고, 마지막 두 토큰은 실제 적용 model·effort입니다(순서 고정, 소문자).",
+        "  이유: CLI 서브에이전트 화면·ListAgents는 메인 세션의 model·effort를 보여 주므로 이름으로 실제값을 드러냅니다.",
+        "  ALLOW_TIER_MODEL_OVERRIDE=1 경로에서는 핀이 아니라 호출의 model·effort와 대조합니다. 이름 필수는 어떤 break-glass로도 우회되지 않습니다.",
+      ].join("\n")
+    );
+    process.exit(2);
+  };
+
   if (OMIT_ALLOWED_TYPES.has(subagentType)) process.exit(0);
 
   if (hasModel) {
@@ -227,7 +296,7 @@ process.stdin.on("end", () => {
       const expected = TIER_EXPECTED_MODEL[subagentType];
       const requested = model.trim();
       if (requested !== expected) {
-        if (process.env.ALLOW_TIER_MODEL_OVERRIDE === "1") process.exit(0);
+        if (process.env.ALLOW_TIER_MODEL_OVERRIDE === "1") passWithNameCheck();
         process.stderr.write(
           [
             `[subagent-model-routing] tier '${subagentType}' 호출의 model 값이 이 tier의 고정값과 다릅니다 — 조용한 강등/승급 차단(B-11).`,
@@ -243,7 +312,7 @@ process.stdin.on("end", () => {
     }
     // effort — 모든 호출에 필수(세션 effort 상속 금지). tier는 핀과 같은 값(B-12).
     if (!hasEffort) {
-      if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
+      if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") passWithNameCheck();
       process.stderr.write(
         [
           "[subagent-model-routing] Agent 호출에 effort 명시가 없습니다 — 세션 effort 상속 금지.",
@@ -259,7 +328,7 @@ process.stdin.on("end", () => {
       subagentType
     );
     if (hasEffortPin && effort.trim() !== TIER_EXPECTED_EFFORT[subagentType]) {
-      if (process.env.ALLOW_TIER_MODEL_OVERRIDE === "1") process.exit(0);
+      if (process.env.ALLOW_TIER_MODEL_OVERRIDE === "1") passWithNameCheck();
       process.stderr.write(
         [
           `[subagent-model-routing] tier '${subagentType}' 호출의 effort 값이 이 tier의 고정값과 다릅니다(B-12).`,
@@ -270,14 +339,14 @@ process.stdin.on("end", () => {
       );
       process.exit(2);
     }
-    process.exit(0);
+    passWithNameCheck();
   }
 
   // model 미지정 경로 — pinned 타입 예외는 2026-10-30에 폐지했다(위 정책 변경
   // 주석). ALLOW_INHERITED_SUBAGENT_MODEL은 여기서만 평가한다(F-5: tier 값
   // 불일치 차단은 위 분기에서 이미 끝났으므로 이 break-glass가 B-11을
   // 우회할 수 없다).
-  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") process.exit(0);
+  if (process.env.ALLOW_INHERITED_SUBAGENT_MODEL === "1") passWithNameCheck();
   process.stderr.write(
     [
       "[subagent-model-routing] Agent 호출에 model 명시가 없습니다 — 세션 모델 상속 금지(pinned tier도 예외 없음).",

@@ -30,7 +30,7 @@
    그대로 신뢰하지 말 것(독립 검증 게이트는 별도 opus 에이전트 — release-gate 최종 판정은 fable).
 5. 이름·상향·대조(2026-10-30 사용자 지시):
    - **tier도 생략 금지(원칙 2의 「생략이 원칙」 예외를 폐지)**: 모든 Agent 호출은 `model`과 `effort`를 명시하고, tier는 frontmatter 핀과 같은 값을 적는다. 이유: 세션 중에 추가된 정의를 하네스가 아직 모르면 pinned 목록만 보고 통과한 호출이 세션 모델·effort를 상속한다(2026-10-30 실측: `executor-max` 첫 스폰 → fable·xhigh). 훅이 model·effort 부재와 tier 값 불일치(B-11·B-12)를 exit 2로 차단한다. 「fallback으로 메인 세션을 상속하게 두지 않는다」가 원칙이다.
-   - **이름 규약**: Agent `name`은 `<작업>-<model>-<effort>`로 짓는다(예 `k289rr-opus-high`). CLI 서브에이전트 화면·ListAgents는 메인 세션의 model·effort를 보여 주므로 이름으로 즉시 보이게 한다. 토큰 값은 실제 적용값(tier면 frontmatter 핀, 비핀이면 호출 인자)과 같아야 한다.
+   - **이름 규약**: Agent `name`은 `<작업>-<model>-<effort>`로 짓는다(예 `k289rr-opus-high`). CLI 서브에이전트 화면·ListAgents는 메인 세션의 model·effort를 보여 주므로 이름으로 즉시 보이게 한다. 토큰 값은 실제 적용값(tier면 frontmatter 핀, 비핀이면 호출 인자)과 같아야 한다. 훅이 B-18으로 강제한다(tier는 이름 필수·토큰 일치, 핀 없는 타입은 이름 금지).
    - **핀 없는 에이전트는 이름 없이 띄운다**: frontmatter에 model·effort 핀이 없는 타입(`codex:*`·`oh-my-claudecode:*`·`general-purpose` 등)은 `name`을 붙이면 호출 `effort`가 유실되어 세션값을 상속한다(2026-10-30 전사 실측 2건: 호출 low → 실제 xhigh). 이름이 필요하면 핀 tier를 쓴다.
    - **상향 경로**: 구현 기본은 `executor-high`(sonnet·high)다. 다음 중 하나면 `executor-max`(opus·high)로 올리고 발주문 「발주 정보」에 `- 상향 근거: <기준 번호>` 1줄을 적는다. ① 여러 모듈에 걸친 드라이버·게이트 상태 전이 변경(틀리면 게이트가 조용히 열리거나 모든 단계가 막힘) ② 같은 WU의 수정 패스가 한 번 실패한 뒤의 재수정 ③ 검수 H가 설계 결함(배선 누락·경계 오판)으로 나온 뒤의 수정 ④ 원칙 3의 opus 행(돈·권한·동시성·보안)에 해당하는 구현. 기준에 해당하지 않으면 상향하지 않고, 사용자에게 상향 여부를 묻지 않는다. `executor-max`에서도 같은 원인으로 다시 실패하면 더 올릴 쓰기 tier가 없으므로 프롬프트를 보강하거나 작업을 쪼개 재위임하고, 그래도 실패하면 사용자에게 보고한다.
    - **반환 뒤 대조**: 서브에이전트 반환마다 전사(`subagents/agent-*.meta.json`의 `model`, `.jsonl` assistant 레코드의 `effort`·`message.model`)로 이름 토큰과 실제값을 대조한다. 불일치는 구조 이슈로 기록하고 원인(핀 드리프트·named 상속)을 닫은 뒤 다음 발주를 낸다. `meta.json`의 `model`은 요청값 기록이라 실제값은 `.jsonl`로 판정하고, haiku처럼 `effort` 키가 없는 레코드는 불일치가 아니라 「effort 판정 불가」로 적는다.
@@ -39,7 +39,8 @@
 > ⚠️ **훅 등록 확인이 먼저다.** 아래 훅은 `settings.json`의 `hooks.PreToolUse`에 matcher `Agent`로 등록돼 있을 때만 작동한다. 파일만 있고 등록이 없으면 자동 강제는 없고, 아래 서술은 모델이 지키는 규약이다. OMC `pre-tool-enforcer.mjs`의 model-routing deny 분기는 Bedrock/Vertex/프록시 환경 전용이라 표준 Anthropic 계정에서는 대신하지 못한다(2026-09-22 실측 사례: 훅 파일은 있으나 전역 `settings.json`에 등록되지 않은 환경이 있었다).
 
 - PreToolUse 훅 `~/.claude/hooks/enforce-subagent-model.cjs` (matcher: Agent)가
-  `model`·`effort` 미지정 호출과 tier 핀 불일치(B-11 model·B-12 effort)를 exit 2로
+  `model`·`effort` 미지정 호출과 tier 핀 불일치(B-11 model·B-12 effort), 이름 규약
+  위반(B-18: tier의 name 없음·토큰 불일치, 핀 없는 타입의 name)을 exit 2로
   차단한다. 생략을 허용하는 타입은 `statusline-setup`(빌트인, 기대값 미상) 하나뿐이다
   (`OMIT_ALLOWED_TYPES`). pinned 목록(`MODEL_PINNED_TYPES`: delegate-first tier 6종:
   explorer-low·executor-med·executor-high·executor-max·reviewer-high·judge-max +

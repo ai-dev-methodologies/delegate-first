@@ -4,11 +4,13 @@ scripts/lint-delegate-first.py — B-07 + B-02 린터 (표준 라이브러리만
 
 Check A (B-07 + B-09 + B-11): `.claude/agents/*.md` frontmatter ↔
   `enforce-subagent-model.cjs`의 MODEL_PINNED_TYPES 정합성. 가장 중요한 검출
-  대상은 fail-open 드리프트다 — tier 에이전트 정의는 그대로 두고
-  frontmatter의 model을 제거하거나 inherit로 바꿨는데 pinned 목록에는 이름이
-  잔존하는 경우, 화이트리스트가 그대로 통과시켜 세션 모델 상속이 조용히
-  재개된다. "model 없음"과 동등한 값(빈 문자열/inherit/null/~/none)도 모두
-  fail-open으로 취급한다 — 이 레포의 훅(enforce-subagent-model.cjs)이
+  대상은 핀 드리프트다 — tier 에이전트 정의는 그대로 두고 frontmatter의
+  model을 제거하거나 inherit로 바꿨는데 pinned 목록에는 이름이 잔존하는
+  경우다. 2026-10-30 원칙 5 이후 훅은 pinned 목록만으로 통과시키지 않으므로
+  (모든 호출이 model·effort를 명시) 이 드리프트가 세션 모델 상속을 통과시키지는
+  않지만, 훅의 기대값(B-11·B-12·B-18 이름 토큰)이 정의와 갈라진다.
+  "model 없음"과 동등한 값(빈 문자열/inherit/null/~/none)도 모두
+  같은 드리프트로 취급한다 — 이 레포의 훅(enforce-subagent-model.cjs)이
   `typeof model === "string" && model.trim()`로 공백 문자열도 미지정으로
   취급하는 것과 규약을 맞춘 것이다.
 
@@ -31,6 +33,9 @@ Check A (B-07 + B-09 + B-11): `.claude/agents/*.md` frontmatter ↔
   같은 방식으로 파싱해, 이 레포 tier ↔ map 키 집합과 map 값 ↔
   agents/*.md frontmatter effort가 어긋나면 FAIL로 표면화한다(map이
   드리프트되면 훅이 정상 tier 호출을 막거나 잘못된 effort를 통과시킨다).
+  B-18(이름 규약)은 이 map의 키 집합을 「이름 필수 tier」로, 두 map의 값을
+  이름의 model·effort 토큰 기대값으로 쓰므로 같은 검사가 B-18 드리프트도
+  덮는다(새 정적 상수는 <작업> 토큰 정규식뿐이라 대조할 대상이 없다).
 
 Check B (B-02): 위임 로그(기본 docs/handoff/delegation-log.md)의 마크다운 표가
   `날짜 | agent | role | model | effort | 실행경로 | 결과` 7컬럼 스키마를
@@ -555,9 +560,9 @@ def check_a(agents_dir: Path, hook_path: Path) -> list:
             anchor_line = model_entry[1] if model_entry else 1
             findings.append(Finding(
                 "FAIL", agent_file, anchor_line,
-                f"FAIL-OPEN: pinned 이름 '{name}'의 정의가 {reason} 상태인데 "
+                f"PIN-DRIFT: pinned 이름 '{name}'의 정의가 {reason} 상태인데 "
                 f"훅({hook_path}:{line_no})의 pinned 목록엔 여전히 남아 있음 — "
-                f"화이트리스트가 세션 모델 상속을 그대로 통과시킴"))
+                f"훅의 기대값(B-11·B-12·B-18)이 정의와 갈라짐"))
 
         effort_entry = fm.get("effort")
         if model_entry is not None and effort_entry is None:

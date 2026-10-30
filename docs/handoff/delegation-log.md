@@ -4,7 +4,7 @@
 
 스키마: `날짜 | agent | role(한 줄) | model | effort | 실행경로 | 결과`
 
-- `effort`: Agent 툴 즉석 호출은 effort 지정이 불가하므로 `(default)`로 적는다. tier 에이전트/Workflow `agent()`/`codex exec` 경로는 실제 값을 적는다.
+- `effort`: 모든 Agent 호출은 effort를 명시하므로(훅이 부재를 exit 2로 차단) 호출에 넘긴 값을 적는다. Workflow `agent()`/`codex exec` 경로도 지정한 값을 적는다. `(default)`는 effort 없이 나간 호출(break-glass 통과·과거 행)을 뜻한다.
 - `실행경로`: `Agent(tier)` / `Agent(ad-hoc)` / `Agent(fork)` / `Workflow agent()` / `codex exec`
 - `결과`: 일반 위임은 `pass` / `re-delegate` / `escalate` — 리뷰(4단계) 후에 채운다. 리뷰/게이트 위임(reviewer-high, judge-max 등)은 판정 요약을 자유 텍스트로 덧붙일 수 있다 — 예 `FIX-THEN-MERGE (Cancer 0, Polyp 6, Cigarette 10)`. 이 자유 텍스트 관례는 2026-08-18부터 실제로 쓰여 왔고(PR #1~#4), 개수(Cancer/Polyp/Cigarette, NF 등)는 감사 시점에 되짚어볼 근거로 유용해 문서를 실태에 맞춰 갱신했다 — 린터(`scripts/lint-delegate-first.py` Check B)는 `결과` 컬럼을 비어 있지 않은지와 `(리뷰 대기)` 누적 건수만 검사하며, 값 자체를 `pass`/`re-delegate`/`escalate`로 제한하지 않는다(자유 텍스트 관례와 일부러 맞춘 설계).
 

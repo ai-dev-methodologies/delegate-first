@@ -461,7 +461,7 @@ fi
 log "=== 수동 확인 필요 (이 스크립트가 자동화할 수 없음 — 실행 중인 세션 필요) ==="
 log "1. 대상 프로젝트 세션에서 /delegate-first 호출 → SKILL.md 로드 확인"
 log "2. model 없이 Agent 즉석 호출 → 훅이 exit 2로 차단하는지 확인"
-log "3. subagent_type: explorer-low 를 핀 값(model haiku·effort low)으로 명시해 호출 → 통과, model 또는 effort를 빼면 exit 2(정상)"
+log "3. subagent_type: explorer-low 를 핀 값(model haiku·effort low)과 이름(name smoke-haiku-low)으로 명시해 호출 → 통과, model·effort·name 중 하나를 빼면 exit 2(정상)"
 log "백업 위치(참고용 사본, 자동 복원 없음): $BAK"
 log "문제가 생기면: 정본 레포를 원하는 커밋으로 checkout한 뒤 이 스크립트를 다시 실행하라(docs/REINSTALL.md §5 참고)."
 log "재설치 완료."
