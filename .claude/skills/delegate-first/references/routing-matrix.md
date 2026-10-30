@@ -28,12 +28,17 @@ tier 에이전트 정의(`.claude/agents/*.md`)는 각 6종을 [SKILL.md](../SKI
 ## 실행 경로 3종
 
 ### ① Agent 툴
-- 즉석 호출(`subagent_type`을 범용 에이전트로 지정)도 `model`과 `effort`를 모두 명시해야 한다(훅 exit 2, 규칙 파일 원칙 5). `name`은 붙이지 않는다. 핀 없는 타입에 `name`을 붙이면 호출 `effort`가 유실되어 세션값을 상속한다. 훅은 `name`을 막지 않으므로 지켰는지는 「반환 뒤 대조」(규칙 파일 원칙 5)가 확인한다. (2026-10-30: Agent 도구 스키마에 `effort` 인자가 생겼다. 무명 스폰에서 호출 `effort`가 실제로 적용되는지는 미실측이다 — 규칙 파일 마지막 절 참조.)
-- **tier 에이전트를 `subagent_type`으로 지정하면 예외다** — `.claude/agents/*.md` frontmatter에 `model`+`effort`가 이미 박혀 있다(예: `subagent_type: judge-max` → fable/max). effort가 필요한 작업은 우선 tier 에이전트가 있는지부터 확인한다. 호출에는 그 tier의 핀과 같은 `model`·`effort`를 **명시**한다(규칙 파일 원칙 5 — 생략 금지). 생략하면 훅이 exit 2로 차단한다. 세션 중에 추가된 정의를 하네스가 아직 모르면 생략한 호출이 세션 모델·effort를 상속하기 때문이다. `name`은 `<작업>-<model>-<effort>`로 짓고 두 토큰을 그 tier의 핀과 같게 한다. 예: `executor-high` → `name: "<작업>-sonnet-high"`. 훅은 이름을 검사하지 않는다. 이름 규약은 `close-task.sh`가 발주문 파일 이름으로 사후에 검사한다.
+- 즉석 호출(`subagent_type`을 범용 에이전트로 지정)도 `model`과 `effort`를 모두 명시해야 한다(훅 exit 2, 규칙 파일 원칙 5). `name`은 붙이지 않는다. 핀 없는 타입에 `name`을 붙이면 호출 `effort`가 유실되어 세션값을 상속한다. 훅은 `name`을 막지 않으므로 지켰는지는 「반환 뒤 대조」(규칙 파일 원칙 5)가 확인한다.
+  - Agent 도구 스키마에는 `effort` 인자가 있다. 무명 스폰에서 호출 `effort`가 실제로 적용되는지는 미실측이다. 규칙 파일 마지막 절을 참조한다.
+- **tier 에이전트를 `subagent_type`으로 지정하면 예외다.** `.claude/agents/*.md` frontmatter에 `model`+`effort`가 이미 박혀 있다(예: `subagent_type: judge-max` → fable/max).
+  - effort가 필요한 작업은 우선 tier 에이전트가 있는지부터 확인한다.
+  - 호출에는 그 tier의 핀과 같은 `model`·`effort`를 **명시**한다(규칙 파일 원칙 5). 생략하면 훅이 exit 2로 차단한다. 세션 중에 추가된 정의를 하네스가 아직 모르면 생략한 호출이 세션 모델·effort를 상속하기 때문이다.
+  - `name`은 `<작업>-<model>-<effort>`로 짓고 두 토큰을 그 tier의 핀과 같게 한다. 예: `executor-high` → `name: "<작업>-sonnet-high"`.
+  - 훅은 이름을 검사하지 않는다. 이름 규약은 `close-task.sh`가 발주문 파일 이름으로 사후에 검사한다.
 - 범용 위임 — 탐색·구현·리뷰 1차 대부분은 이 경로로 충분하다.
 - 명시값은 훅 stderr의 일반 안내가 아니라 **그 tier의 frontmatter model·effort 값(위 표/문단의 값)을 그대로** 쓴다. 다른 값을 넘기면 그 tier의 고정값과 정확히 일치하지 않는 한 훅이 exit 2로 **차단**한다(model은 B-11, effort는 B-12) — 더 이상 조용한 강등이 아니다. 의도적 override는 사람 전용 break-glass `ALLOW_TIER_MODEL_OVERRIDE=1`이 필요하다.
-- 등록된 훅이 여러 벌이면(전역·프로젝트) 모두 실행되고 그중 하나라도 차단하면 전체가 차단된다 — 실행 순서는 확인되지 않았으므로 전역·프로젝트 사본을 모두 갱신해야 한다.
-- **★2026-08-18 실측**: `name` 파라미터를 동반한 named 스폰은 model은 frontmatter가 그대로 적용되지만 **effort는 frontmatter 값이 적용되지 않는다**(관측: `executor-med`의 medium 정의가 high로, `explorer-low`+override의 low 정의가 max로 나옴). 이름 규약은 규칙 파일 원칙 5를 따른다 — tier는 `<작업>-<model>-<effort>` 이름으로 띄우고 반환 뒤 전사로 실제 effort를 대조하며, 핀 없는 타입은 이름 없이 띄운다. haiku 계열은 transcript에 effort 키 자체가 없어 적용 여부 판정 불가. `low→max`(`explorer-low`) 관측은 model override가 동반돼 혼입 가능성이 있다 — **override 없는 clean 표본은 `executor-med`(medium→high) 1건뿐**이다.
+- 등록된 훅이 여러 벌이면(전역·프로젝트) 모두 실행되고 그중 하나라도 차단하면 전체가 차단된다. 실행 순서는 확인되지 않았다. 옛 전역·프로젝트 `settings.json` 등록은 지운다.
+- **★2026-08-18 실측**: `name` 파라미터를 동반한 named 스폰은 model은 frontmatter가 그대로 적용되지만 **effort는 frontmatter 값이 적용되지 않는다**(관측: `executor-med`의 medium 정의가 high로, `explorer-low`+override의 low 정의가 max로 나옴). 이름 규약은 규칙 파일 원칙 5를 따른다. tier는 `<작업>-<model>-<effort>` 이름으로 띄우고 반환 뒤 전사로 실제 effort를 대조하며, 핀 없는 타입은 이름 없이 띄운다. haiku 계열은 transcript에 effort 키 자체가 없어 적용 여부 판정 불가. `low→max`(`explorer-low`) 관측은 model override가 동반돼 혼입 가능성이 있다. **override 없는 clean 표본은 `executor-med`(medium→high) 1건뿐**이다.
   - 2026-10-30 관측: model·effort를 명시한 named tier 스폰 2건(`executor-max` opus·high, `executor-med` sonnet·medium)의 전사 effort는 핀과 같았다(high·medium). 호출값과 핀이 같아 어느 쪽이 적용됐는지는 구분되지 않는다.
   - `explorer-low`+override 관측은 **B-11(값 검증 훅) 도입 이전**에 수집됐다. B-11 이후 같은 프로브(model에 다른 값을 넘겨 explorer-low를 호출)를 재현하려면 그 호출 자체가 값 불일치로 차단되므로 `ALLOW_TIER_MODEL_OVERRIDE=1`이 필요하다 — 재현 불가는 증거 조작이 아니라 이 값 검증 게이트가 의도대로 작동한다는 뜻이다.
 

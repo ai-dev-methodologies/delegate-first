@@ -15,7 +15,7 @@
 | D12 | 실패 정책은 「두 번째 실패에서 자동 재시도를 중단하고 상향을 판정한다」로 합친다 | - |
 | D13 | 위임 로그의 소급 행, role 칸 문구, 「전사 기준 사후 기록」 표시는 그대로 둔다 | - |
 | D14 | 훅의 활성화 범위는 delegate-first 스킬을 호출한 세션으로 한정한다(활성화 범위 ③). 훅은 `SKILL.md` frontmatter `hooks`로 등록하고 레포 `.claude/settings.json` 등록은 없앤다(`{}`). 근거는 스킬 호출 세션에서 Agent 호출에 PreToolUse 훅이 발동하고 exit 2 차단이 적용된 프로브 실측 1·2·3 PASS다. 프로브에서 command 안의 `${CLAUDE_SKILL_DIR}`은 빈 문자열이고 `${CLAUDE_PROJECT_DIR}`은 값이 있었으며, `${CLAUDE_SKILL_DIR}` 기반 command는 스크립트를 찾지 못해 127로 끝나 fail-open이 됐다. 그래서 command는 `${CLAUDE_PROJECT_DIR}` 기반으로 두고 스크립트나 node가 없으면 exit 2로 막는다(fail-closed) | - |
-| D15 | 규칙 범위는 B안으로 한다. 전역 규칙 제목의 「전 프로젝트」를 유지한다. 자동 차단은 스킬 호출 세션에서만 하고, 스킬 밖 세션에서는 모델이 지키는 규약이다. 근거는 서브에이전트가 메인 모델을 상속하는 사고가 스킬 밖에서도 똑같이 생긴다는 점이다. A안(규칙 범위를 스킬 호출 세션으로 줄임)은 강제를 늘리지 않고 스킬 밖의 보호만 없앤다. 2026-10-30 사용자 선택 | - |
+| D15 | 규칙 범위는 B안으로 한다. 전역 규칙 제목의 「전 프로젝트」를 유지한다. 자동 차단은 스킬 호출 세션에서만 하고, 스킬 밖 세션에서는 모델이 지키는 규약이다. 근거는 서브에이전트가 메인 모델을 상속하는 사고가 스킬 밖에서도 똑같이 생긴다는 점이다. A안(규칙 범위를 스킬 호출 세션으로 줄임)은 강제를 늘리지 않고 스킬 밖의 보호만 없앤다. 2026-10-30에 사용자가 골랐다 | - |
 
 훅의 활성화 범위는 결정 D14로 정했다. 현재 사실은 §7에, 남은 위험은 §10 항목 14에 적는다.
 
@@ -536,7 +536,7 @@ smoke의 음성 케이스는 훅의 차단 로직을 꺼도 통과할 수 있다
 | P10 | `SKILL.md` 체크리스트에 「발주 작성」 단계를 더한다. `routing-matrix.md`·`prompt-templates.md`를 6칸과 발주문 경로 전달로 갱신한다 | `executor-high` | 세 문서가 §4와 같은 칸 구성을 말한다. `CONTRACT:` 줄을 요구하는 서술이 없다 | `python3 scripts/lint-delegate-first.py --strict` · `grep -n 'CONTRACT' .claude/skills/delegate-first/SKILL.md .claude/skills/delegate-first/references/*.md`(0건 기대) |
 | P11 | 규칙 파일에 발주 계약 원칙(사후 검사)을 더하고, 강제 장치 절에서 B-18을 사후 검사로 옮겨 적는다 | `executor-high` | 규칙 파일이 훅 검사 세 가지와 사후 검사를 구분해 말한다. 항목별 diff 검토를 거친다 | `git diff .claude/rules/subagent-model-routing.md` |
 | P12 | `doc-reviewer` 에이전트와 `doc-refine` 스킬을 이 레포로 옮긴다(결정 D9). `reinstall.sh` 설치 대상과 lint 대조 대상에 반영한다 | `executor-high` | 정본 두 경로가 레포에 있고 재설치 테스트가 두 경로를 다룬다 | `ls .claude/agents/doc-reviewer.md .claude/skills/doc-refine/SKILL.md` · `bash scripts/test-reinstall.sh` · `python3 scripts/lint-delegate-first.py --strict` |
-| P13 | README 호출 규약 절과 작업 디렉터리 절을 갱신한다. `docs/decisions.md`를 신설해 D1~D13을 `DEC-NNN`으로 올린다. `BACKLOG.md`에 B-19를 만들지 않는다는 결정을 적고 미룬 항목에 「재개 조건」을 보강한다 | `executor-med` | 세 파일이 서로 모순되지 않는다 | `grep -n 'B-18\|B-19' README.md BACKLOG.md` · `grep -c '| active |' docs/decisions.md` |
+| P13 | README 호출 규약 절과 작업 디렉터리 절을 갱신한다. `docs/decisions.md`를 신설해 D1~D15를 `DEC-NNN`으로 올린다. `BACKLOG.md`에 B-19를 만들지 않는다는 결정을 적고 미룬 항목에 「재개 조건」을 보강한다 | `executor-med` | 세 파일이 서로 모순되지 않는다 | `grep -n 'B-18\|B-19' README.md BACKLOG.md` · `grep -c '| active |' docs/decisions.md` |
 | P14 | 문서 검사: `doc-refine` 흐름(검토 → 개선안 승인 → 적용)을 README·청사진·판정표에 돌린다. 지침 파일은 항목별로 diff를 검토한다 | `doc-reviewer`, `executor-med` | 지적 건수·적용 건수·보류 사유가 보고된다 | `~/.claude/rules/doc-writing.md`의 완료 조건 |
 | P15 | 독립 적대 리뷰. 훅·scripts·.githooks 변경이 있으므로 보안 트리거로 필수다 | `reviewer-high` | 미해소 H가 0이다 | 리뷰 보고서의 H 목록과 재현 명령 |
 | P16 | 이 재구축을 `close-task.sh`로 닫는다. 작업 문서는 P1에서 만든 것을 쓴다 | 메인 | 종료 코드 0. 쓰기 범위 대조에 위반이 없다 | `bash .claude/skills/delegate-first/scripts/close-task.sh 20261030-delegate-first-v2` |
