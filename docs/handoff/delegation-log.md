@@ -102,3 +102,9 @@
 | 2026-10-30 | executor-max | [v2-6fix-opus-high] v2-5d-fix 리뷰 지적 수정 | opus | high | Agent(tier) | 140f73a, test-delegate-scripts 159/159, test-reinstall 32/32. 전사 opus·high 일치 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
 | 2026-10-30 | executor-med | [v2-6docfix-sonnet-medium] 문서 검사의 확실한 오류 반영 | sonnet | medium | Agent(tier) | f3d7666, 의미 변화 없음(메인 diff 검토). 전사 sonnet·medium 일치 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
 | 2026-10-30 | executor-max | [v2-8global-opus-high] 전역 재설치·옛 훅 등록 제거·헤드리스 실측 | opus | high | Agent(tier) | 8121c28. 전역 재설치·옛 등록 제거, 실측 (a)~(d) PASS(메인이 로그 확인). 전사 opus·high 일치 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | reviewer-high | [v2-9verify-opus-high] 140f73a·f3d7666·8121c28·전역 상태 적대 검증 | opus | high | Agent(tier) | 조건부(H0·M3·L5). M3은 7e98822에서 허용 기준으로 재작성했다. 전사 opus·high 일치 |
+| 2026-10-30 | executor-med | [v2-9tidy-sonnet-medium] 7cdda01 청사진 §10 항목 14와 위임 로그 결과 칸 정리 | sonnet | medium | Agent(tier) | 7cdda01. 청사진 §10 항목 14와 위임 로그 결과 칸. 전사 sonnet·medium 일치 |
+| 2026-10-30 | executor-max | [v2-9fix-opus-high] 반환 칸 허용 기준 재작성 | opus | high | Agent(tier) | 7e98822. 반환 칸 허용 기준, test-delegate-scripts 206/206. 전사 opus·high 일치 |
+| 2026-10-30 | executor-med | [v2-9sync-sonnet-medium] 전역 스킬 재동기화 | sonnet | medium | Agent(tier) | reinstall --dst $HOME --propagate-global. diff 동일, settings.json 불변. 전사 sonnet·medium 일치 |
+| 2026-10-30 | reviewer-high | [v2-9rr2-opus-high] 7e98822 확인 리뷰 | opus | high | Agent(tier) | H0, M1·L3은 B-19 한계로 넘겼다(반복 중단). 전사 opus·high 일치 |
+| 2026-10-30 | executor-med | [v2-9b19-sonnet-medium] B-19 남은 한계 기록과 위임 로그 갱신 | sonnet | medium | Agent(tier) | B-19 한계 4항목 기록 |
