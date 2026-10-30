@@ -65,3 +65,17 @@
 | 2026-10-06 | reviewer-high | fork-guard r1 적대 리뷰 | (파라미터 생략) | high(frontmatter) | Agent(tier) | ITERATE (P1 1, P2 9; 실제 claude-opus-5-5) |
 | 2026-10-06 | executor-med | r1 지적 F-01~F-10 반영 | (파라미터 생략) | medium(frontmatter) | Agent(tier) | pass (실제 claude-sonnet-5-5) |
 | 2026-10-06 | reviewer-high | fork-guard r2 해소 확인 | (파라미터 생략) | high(frontmatter) | Agent(tier) | APPROVE (P0 0, P1 0, 신규 P2 2; 실제 claude-opus-5-5) |
+| 2026-10-30 | executor-med | [move-install-sonnet-medium] 이동·최신화, 설치 STOP | sonnet | medium | Agent(tier) | 이동·최신화 완료, 설치 단계에서 STOP (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-max | [p5-port-opus-high] 원칙 5·B-12 이식 | opus | high | Agent(tier) | 이식 완료 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | reviewer-high | [p5-review-opus-high] 원칙 5 이식 적대 리뷰 | opus | high | Agent(tier) | 적대 리뷰 H0 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-high | [p5-fix-sonnet-high] 커밋 172fffd·push·전역 설치 | sonnet | high | Agent(tier) | 커밋 172fffd, push, 전역 설치 완료 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-max | [name-enforce-opus-high] B-18 이름 규약 강제 | opus | high | Agent(tier) | B-18 구현 완료 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-med | [readme-sonnet-medium] README·번호 변경 | sonnet | medium | Agent(tier) | README·번호 변경 완료 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | doc-reviewer | [readme-docreview-opus-high] README 문서 검사 | opus | high | Agent(ad-hoc) | 문서 검사 완료. tier 6종 밖 타입에 이름을 붙인 호출이다(청사진 §10 항목 11) (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | reviewer-high | [b18-review-opus-high] B-18 1차 적대 리뷰 | opus | high | Agent(tier) | 1차 적대 리뷰 H1 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | judge-max | [b18-judge-fable-max] B-18 판정 | fable | max | Agent(tier) | 사용자 요청으로 중단 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | executor-med | [wip-commit-sonnet-medium] WIP 커밋 05a1c81 | sonnet | medium | Agent(tier) | WIP 커밋 05a1c81 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-high | [adopt-blueprint-sonnet-high] 적용 청사진 작성 | sonnet | high | Agent(tier) | 방향 변경으로 취소 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
+| 2026-10-30 | judge-max | [ilyas-plan-fable-max] 판정표·청사진 골격·재구축 계획 | fable | max | Agent(tier) | 판정표·청사진 골격·재구축 계획 산출 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | reviewer-high | [ilyas-fit-opus-high] 이식·별도 적용 판정 | opus | high | Agent(tier) | 이식/별도 판정: 혼합 (전사 기준 사후 기록, 이름·전사 일치) |
+| 2026-10-30 | executor-high | [v2-blueprint-sonnet-high] v2 청사진·판정표 2건·로그 소급 작성 | sonnet | high | Agent(tier) | 진행 중인 이 작업, 반환 뒤 메인 판정 (전사 기준 사후 기록, 이름·전사 대조 미기재) |
